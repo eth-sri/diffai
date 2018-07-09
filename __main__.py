@@ -2,7 +2,6 @@
 # Copyright (c) 2018 Secure, Reliable, and Intelligent Systems Lab (SRI), ETH Zurich
 # This software is distributed under the MIT License: https://opensource.org/licenses/MIT
 # SPDX-License-Identifier: MIT
-# Author: Matthew Mirman (matt@mirman.com)
 # For more information see https://github.com/eth-sri/diffai
 
 # THE SOFTWARE IS PROVIDED "AS-IS" WITHOUT ANY WARRANTY OF ANY KIND, EITHER

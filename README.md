@@ -1,10 +1,9 @@
 DiffAI
 ======
 
-DiffAI is a system for training neural networks to be provably robust, proving that they are robust, 
-and testing whether they are robust.
+DiffAI is a system for training neural networks to be provably robust and proving that they are robust.
 
-This repository contains the code used for the experiments [Differentiable Abstract Interpretation for Provably Robust Neural Networks](https://www.icml.cc/Conferences/2018/Schedule?showEvent=2477)
+This repository contains the code used for the experiments [Differentiable Abstract Interpretation for Provably Robust Neural Networks](http://proceedings.mlr.press/v80/mirman18b.html)
 
 Requirements 
 ------------
