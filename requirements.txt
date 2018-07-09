@@ -1,0 +1,6 @@
+numpy
+six
+future
+forbiddenfruit
+torch
+torchvision
