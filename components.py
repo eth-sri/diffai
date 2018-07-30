@@ -231,7 +231,7 @@ def LeNet(conv_layers, ly, bias = True, normal=False, **kargs):
             return tp
         if isinstance(tp[0], str):
             return MaxPool2D(*tp[1:])
-        return Conv(out_channels = tp[0], kernel_size = tp[1], stride = tp[-1] if len(tp) == 4 else 1, bias=bias, normal=normal)
+        return Conv(out_channels = tp[0], kernel_size = tp[1], stride = tp[-1] if len(tp) == 4 else 1, bias=bias, normal=normal, **kargs)
                       
     return Seq(*([transfer(s) for s in conv_layers] + [FFNN(ly, **kargs, bias=bias)]))
 
