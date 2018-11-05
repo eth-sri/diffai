@@ -1,6 +1,8 @@
 DiffAI
 ======
 
+![High Level](http://safeai.ethz.ch/img/overview.png)
+
 DiffAI is a system for training neural networks to be provably robust and for proving that they are robust.
 
 This repository contains the code used for the experiments in [Differentiable Abstract Interpretation for Provably Robust Neural Networks](https://files.sri.inf.ethz.ch/website/papers/icml18-diffai.pdf)
