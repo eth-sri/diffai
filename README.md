@@ -8,13 +8,11 @@ DiffAI is a system for training neural networks to be provably robust and for pr
 Background
 ----------
 
-By now, it is well known that otherwise working networks can be tricked by clever attacks.  
-For example [Goodfellow et al.](https://arxiv.org/abs/1412.6572) demonstrated a network with high classification accuracy which classified one image of a panda correctly, and a seemingly identical attack picture 
+By now, it is well known that otherwise working networks can be tricked by clever attacks. For example [Goodfellow et al.](https://arxiv.org/abs/1412.6572) demonstrated a network with high classification accuracy which classified one image of a panda correctly, and a seemingly identical attack picture 
 incorrectly.  Many defenses against this type of attack have been produced, but very few produce networks for which *provably* verifying the safety of a prediction is feasible.
 
 Abstract Interpretation is a technique for verifying properties of programs by soundly overapproximating their behavior.  When applied to neural networks, an infinite set (a ball) of possible inputs is passed to an approximating "abstract" network
-to produce a superset of the possible outputs from the actual network.  Provided an appropreate representation for these sets, demonstrating that the network classifies everything in the ball correctly becomes a simple task.
-The method used to represent these sets is the abstract domain, and the specific approximations are the abstract transformers.  
+to produce a superset of the possible outputs from the actual network.  Provided an appropreate representation for these sets, demonstrating that the network classifies everything in the ball correctly becomes a simple task. The method used to represent these sets is the abstract domain, and the specific approximations are the abstract transformers.  
 
 In DiffAI, the entire abstract interpretation process is programmed using PyTorch so that it is differentiable and can be run on the GPU, 
 and a loss function is crafted so that low values correspond to inputs which can be proved safe (robust).
