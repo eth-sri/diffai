@@ -5,8 +5,6 @@ DiffAI
 
 DiffAI is a system for training neural networks to be provably robust and for proving that they are robust.
 
-This repository contains the code used for the experiments in [Differentiable Abstract Interpretation for Provably Robust Neural Networks](https://files.sri.inf.ethz.ch/website/papers/icml18-diffai.pdf)
-
 Requirements 
 ------------
 
@@ -71,6 +69,12 @@ Not all of the datasets listed in the help message are supported.  Supported dat
 * FashionMNIST
 
 Unsupported datasets will not necessarily throw errors.
+
+About
+-----
+
+* This repository contains the code used for the experiments in the paper, [Differentiable Abstract Interpretation for Provably Robust Neural Networks](https://files.sri.inf.ethz.ch/website/papers/icml18-diffai.pdf)
+* Further information and related projects can be found at [the SafeAI Project](http://safeai.ethz.ch/)
 
 Citing This Framework
 ---------------------
