@@ -119,9 +119,6 @@ Not all of the datasets listed in the help message are supported.  Supported dat
 
 Unsupported datasets will not necessarily throw errors.
 
-
-* To reproduce the results from the ICML paper, 
-
 About
 -----
 
