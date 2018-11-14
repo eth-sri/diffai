@@ -1,5 +1,5 @@
-DiffAI
-======
+DiffAI <img width="100" alt="portfolio_view" align="right" src="http://safeai.ethz.ch/img/sri-logo.svg">
+========================================================================================================
 
 ![High Level](https://raw.githubusercontent.com/eth-sri/diffai/master/media/overview.png)
 
