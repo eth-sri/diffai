@@ -1,5 +1,5 @@
-DiffAI <img width="100" alt="portfolio_view" align="right" src="http://safeai.ethz.ch/img/sri-logo.svg">
-========================================================================================================
+DiffAI v2.0 <img width="100" alt="portfolio_view" align="right" src="http://safeai.ethz.ch/img/sri-logo.svg">
+=============================================================================================================
 
 ![High Level](https://raw.githubusercontent.com/eth-sri/diffai/master/media/overview.png)
 
@@ -47,7 +47,7 @@ DiffAI can be run as a standalone program.  To see a list of arguments, type
 At the minimum, DiffAI expects at least one domain to train with and one domain to test with, and a network with which to test.  For example, to train with the Box domain, baseline training (Point) and test against the FGSM attack and the ZSwitch domain with a simple feed forward network on the MNIST dataset (default, if none provided), you would type:
 
 ```
-(pytorch) $ python . -d Point -d Box -t FGSM -t ZSwitch -n ffnn
+(pytorch) $ python . -d "Point()" -d "Box()" -t "PGD()" -t "ZSwitch()" -n ffnn
 ```
 
 Unless otherwise specified by "--out", the output is logged to the folder "out/".  
@@ -58,6 +58,43 @@ To load a saved model, use "--test"
 
 The default specification type is the L_infinity Ball specified explicitly by "--spec boxSpec", 
 which uses an epsilon specified by "--width"
+
+Training Domain DSL
+-------------------
+
+In DiffAI version 2.0, a dsl has been provided to specify arbitrary training domains. In particular, it is now possible to train on combinations of attacks and abstract domains on specifications defined by attacks. Specifying training domains is possible in the command line using ```-d "DOMAIN_INITIALIZATION"```.  The possible combinations are the classes listed in domains.py. The same syntax is also supported for testing domains, to allow for testing robustness with different epsilon-sized attacks and specifications.
+
+Listed below are a few examples:
+
+* ```-t "PGD(k=4, w=0.1)" -t "ZNIPS(w=0.3)" ``` Will first test with the PGD attack with an epsilon=w=0.1 and, the number of iterations k=4 and step size set to w/k.  It will also test with the zonotope domain using the transformer specified in our [NIPS 2018 paper](https://www.sri.inf.ethz.ch/publications/singh2018effective) with an epsilon=w=0.3.
+
+* ```-t "PGDK(r=3,k=16,restart=2, w=0.1)"``` tests on points found using PGD with a step size of r*w/k and two restarts, and an attack-generated specification.
+
+* ```-d Point()``` is standard non-defensive training.
+
+* ```-d "Mix(a=PGD(), b=Box(), aw=1, bw=0.1)"``` trains on points produced by pgd with the default parameters listed in domains.py, and points produced using the box domain.  The loss is combined linearly using the weights aw and bw and scaled by 1/(aw + bw). The epsilon used for both is the ambient epsilon specified with "--width".
+
+* ```-d "DList((PGD(w=0.1),1), (Box(w=0.01),0.1), (Box(w=0.1),0.01))"``` is a generalization of the Mix domain allowing for training with arbitrarily many domains at once weighted by the given values (the resulting loss is scaled by the inverse of the sum of weights).
+
+* ```-d "AdvDom(a=PGD(), b=Box())"``` trains using the Box domain, but constructs specifications as L∞ balls containing the PGD attack image and the original image "o".  
+
+* ```-d "BiAdv(a=PGD(), b=Box())"``` is similar, but creates specifications between the pgd attack image "a" and "o - (a - o)".
+
+One domain we have found particularly useful for training is ```Mix(a=PGDK(r=3,k=16,restart=2, w=0.1), b=BiAdv(a=PGD(k=5, w=0.05)), bw=0.1)```.
+
+While the above domains are all deterministic (up to gpu error and shuffling orders), we have also implemented nondeterministic training domains:
+
+* ```-d "Coin(a=PGD(), b=Box(), aw=1, bw=0.1)"``` is like Mix, but chooses which domain to train a batch with by the probabilities determined by aw / (aw + bw) and bw / (aw + bw).
+
+* ```-d "DProb((PGD(w=0.1),1), (Box(w=0.01),0.1), (Box(w=0.1),0.01))"``` is to Coin what DList is to Mix.
+
+* ```-d AdvDom(a=PGD(), b=DList((PointB(),1), (PointA(), 1), (Box(), 0.2)))``` can be used to share attack images between multiple training types.  Here an attack image "m" is found using PGD, then both the original image "o" and the attack image "m" are passed to DList which trains using three different ways:  PointA trains with "o", PointB trains with "m", and Box trains on the box produced between them.  This can also be used with Mix.
+
+* ```-d Normal(w=0.3)``` trains using images sampled from a normal distribution around the provided image using standard deviation w.
+
+* ```-d NormalAdv(a=PGD(), w=0.3)``` trains using PGD (but this could be an abstract domain) where perturbations are constrained to a box determined by a normal distribution around the original image with standard deviation w.
+
+There are more domains implemented than listed here, and of course more interesting combinations are possible.  Please look carefully at domains.py for default values and further options.
 
 Contents
 --------
@@ -111,6 +148,8 @@ Contributors
 
 * [Matthew Mirman](https://www.mirman.com) - matt@mirman.com
 * [Timon Gehr](https://www.sri.inf.ethz.ch/tg.php) - timon.gehr@inf.ethz.ch
+* Marc Fischer - marcfisc@student.ethz.ch
+* [Gagandeep Singh](https://www.sri.inf.ethz.ch/people/gagandeep) - gsingh@inf.ethz.ch
 * [Martin Vechev](https://www.sri.inf.ethz.ch/vechev.php) - martin.vechev@inf.ethz.ch
 
 License and Copyright
