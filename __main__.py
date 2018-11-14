@@ -2,6 +2,7 @@
 # Copyright (c) 2018 Secure, Reliable, and Intelligent Systems Lab (SRI), ETH Zurich
 # This software is distributed under the MIT License: https://opensource.org/licenses/MIT
 # SPDX-License-Identifier: MIT
+# Author: Matthew Mirman (matt@mirman.com)
 # For more information see https://github.com/eth-sri/diffai
 
 # THE SOFTWARE IS PROVIDED "AS-IS" WITHOUT ANY WARRANTY OF ANY KIND, EITHER
@@ -18,6 +19,7 @@ import future
 import builtins
 import past
 import six
+import copy
 
 from timeit import default_timer as timer
 from datetime import datetime
@@ -26,8 +28,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torchvision import datasets, transforms
+from torchvision import datasets
 from torch.utils.data import Dataset
+import decimal
+import torch.onnx
+
 
 import inspect
 from inspect import getargspec
@@ -41,15 +46,15 @@ from components import *
 import models
 
 import domains
+
 from domains import *
 import math
 
-from losses import *
+import warnings
+from torch.serialization import SourceChangeWarning
 
-def chunks(l, n):
-    """Yield successive n-sized chunks from l."""
-    for i in range(0, len(l), n):
-        yield l[i:i + n]
+POINT_DOMAINS = [m for m in h.getMethods(domains) if m.Domain is h.dtype]
+SYMETRIC_DOMAINS = [domains.Box] + POINT_DOMAINS
 
 
 class Top(nn.Module):
@@ -57,29 +62,16 @@ class Top(nn.Module):
         super(Top, self).__init__()
         self.net = net
         self.ty = ty
-        self.cw = args.width_weight
-
-        self.tw = args.tot_weight
-        self.sw = args.std_weight
-        self.time_mult = args.time_mult * 100000
-        self.mix_mult = args.mix_mult * 30000
         self.w = args.width
         self.global_num = 0
         self.getSpec = getattr(self, args.spec)
         self.sub_batch_size = args.sub_batch_size
         self.curve_width = args.curve_width
-        self.use_log = args.use_log
         self.regularize = args.regularize
-        self.log_ai_loss = args.log_ai_loss
 
-        self.min_tw = args.tot_weight_min
-        self.tw_time_pow = args.tot_weight_time_pow
-        self.tw_time_falloff = pow(float(args.tot_weight_time), self.tw_time_pow)
 
         self.speedCount = 0
         self.speed = 0.0
-
-        
 
     def addSpeed(self, s):
         self.speed = (s + self.speed * self.speedCount) / (self.speedCount + 1)
@@ -90,40 +82,12 @@ class Top(nn.Module):
 
     def clip_norm(self):
         self.net.clip_norm()
-    
-    def getPred(self, x):
-        return self(x).log_softmax()
-
-    def widthL(self, outDom):
-        return outDom.diameter()
-
-    def widthDomL(self, dom):
-        return self.widthL(self(dom))
 
     def boxSpec(self, x, target):
-        if h.hasMethod(self.ty, "attack"):
-            x = self.ty.attack(self , self.w, x, target)
-            return [(x,None,target)]
-        return [(x, self.ty.box(x, self.w), target)]
-
-    def lineSpec(self, x, target):
-        eps = h.ones(x.size()) * self.w
-        return [(x, self.ty.line(x - eps, x + eps, None), target)]
-
-    def mixSpec(self, x, target):
-        if self.ty in SYMETRIC_DOMAINS:
-            return self.boxSpec(x, target)
-        tm = float(self.global_num) / float(self.time_mult)
-        lg = math.log10(tm * tm + 10)
-        pr_hbox = 1 - 1. / (lg * lg)
-        s = random.uniform(0,1)
-        if s < pr_hbox:
-            return [(x, domains.HBox.box(x,self.w), target)]
-        else:
-            return [(x, domains.Box.box(x,self.w), target)]
+        return [(self.ty.box(x, self.w, model=self, target=target, untargeted=True), target)]
 
     def curveSpec(self, x, target):
-        if self.ty in SYMETRIC_DOMAINS:
+        if self.ty.__class__ in SYMETRIC_DOMAINS:
             return self.boxSpec(x,target)
         
 
@@ -153,9 +117,9 @@ class Top(nn.Module):
             bestSpecs[i] = best_x
                 
         new_batch_size = self.sub_batch_size
-        batchedTargs = chunks(newTargs, new_batch_size)
-        batchedSpecs = chunks(newSpecs, new_batch_size)
-        batchedBest = chunks(bestSpecs, new_batch_size)
+        batchedTargs = h.chunks(newTargs, new_batch_size)
+        batchedSpecs = h.chunks(newSpecs, new_batch_size)
+        batchedBest = h.chunks(bestSpecs, new_batch_size)
 
         def batch(t,s,b):
             t = h.ltype(t)
@@ -168,47 +132,10 @@ class Top(nn.Module):
                 b.cuda()
 
             m = self.ty.line(s, b, self.curve_width)
-            return (s, m , t)
+            return (m , t)
 
         return [ batch(t,s,b) for t,s,b in zip(batchedTargs, batchedSpecs, batchedBest)]
 
-
-    def stdLoss(self, x, dom, target, **args):
-        return F.nll_loss(self.getPred(x), target, **args, size_average = False, reduce = False) # definitely includes averaging
-
-
-
-    def preDomRes(self, outDom, target, **args): # TODO: make faster again by keeping sparse tensors sparse
-        t = h.one_hot(target.data.long(), outDom.size()[1]).to_dense()
-        tmat = t.unsqueeze(2).matmul(t.unsqueeze(1))
-
-        tl = t.unsqueeze(2).expand(-1, -1, tmat.size()[1])
-
-        inv_t = h.eye(tmat.size()[1]).expand(tmat.size()[0], -1, -1)
-        inv_t = inv_t - tmat
-
-        tl = tl.bmm(inv_t)
-
-        fst = outDom.bmm(tl)
-        snd = outDom.bmm(inv_t)
-        
-        return (fst - snd) + t
-    def domRes(self, outDom, target, **args):
-        return self.preDomRes(outDom, target, **args).lb()
-
-    def outDomL(self, outDom, target, **args):
-        r = -self.domRes(outDom,target, **args)
-        return torch.exp( torch.clamp(r, -1000, 25) )
-
-    def outRDomL(self, outDom, target, **args):
-        r = -self.domRes(outDom,target, **args)
-        out = F.softplus(r.max(1)[0])      # kinda works        
-        return (out).pow(self.log_ai_loss) if not self.log_ai_loss is None and self.log_ai_loss > 0 else out
-
-
-    def isSafeDom(self, outDom, target, **args):
-        od,_ = torch.min(self.domRes(outDom,target, **args), 1)
-        return od.gt(0.0).long()
 
     def regLoss(self):
         if self.regularize is None:
@@ -218,75 +145,11 @@ class Top(nn.Module):
             reg_loss += param.norm(2)
         return self.regularize * reg_loss
         
-    def domLoss(self, x, dom, target, **args):
-        if self.ty in POINT_DOMAINS:
-            return self.regLoss() + self.stdLoss(x,dom, target,**args)
-        outDom = self(dom)
-        return self.outDomL(outDom, target, **args) + self.regLoss()
-
-    def domRLoss(self, x, dom, target, **args):
-        if self.ty in POINT_DOMAINS:
-            return self.regLoss() + self.stdLoss(x,dom, target,**args)
-        outDom = self(dom)
-        return self.outRDomL(outDom, target, **args) + self.regLoss()
-
-    def getMult(self):
-        time_passage = float(self.global_num) / float(self.time_mult)
-        m = torch.log(h.pyval(time_passage + 2)) if self.use_log else h.pyval(1)
-        return m * m * m * m * m * m
-    
-    def getTW(self):
-        tm = pow(float(self.global_num), self.tw_time_pow)
-        
-        if tm >= self.tw_time_falloff:
-            return self.tw
-        return (self.tw - self.min_tw) * tm / self.tw_time_falloff + self.min_tw
-        
-
-
-    def totalLoss(self, x, dom, target, **args):
-        if self.ty in POINT_DOMAINS:
-            return self.regLoss() + self.stdLoss(x,dom,target,**args)
-        outDom = self(dom)
-        tw = self.tw * self.getMult()
-        cw = self.cw
-        sw = self.sw
-        return self.regLoss() + ((self.outRDomL(outDom, target, **args) + 1 / tw) * ((self.widthL(outDom) * cw + 1) * self.stdLoss(x, dom, target, **args) + 1 / sw) - 1 / ( sw * tw) )
-
-    def aiLoss(self, x, dom, target, **args):
-        if self.ty in POINT_DOMAINS:
-            return self.regLoss()  +  self.stdLoss(x,dom,target,**args)
-        outDom = self(dom)
-        cw = self.cw / self.getMult()
-        sw = self.sw
-        tw = self.getTW() * self.getMult()
-
-        if cw > 0:
-            ww = self.widthL(outDom) * cw
-        else:
-            ww = 0
-
-        if tw > 0:
-            tt = self.outRDomL(outDom, target, **args) * tw
-        else:
-            tt = 0
-
-        return self.regLoss() + (tt + ww + self.stdLoss(x, dom, target, **args) * sw) / (tw +  sw + cw)
-
-    def fgsmLoss(self, x, dom, target, **args):
-        if self.ty in POINT_DOMAINS:
-            return self.regLoss()  +  self.stdLoss(x,dom,target,**args)
-        atk = domains.FGSM.attack(self, self.w, x, target)
-        outDom = self(dom)
-        sw = self.sw
-        tw = self.tw * self.getMult()
-        return (self.outRDomL(outDom, target, **args) * tw 
-                + self.stdLoss(atk, None, target, **args) * sw) / (tw + sw)
+    def aiLoss(self, dom, target, **args):
+        return self.regLoss()  +  self.ty.loss(self(dom), target, **args)
 
     def printNet(self, f):
         self.net.printNet(f)
-
-
 
         
 # Training settings
@@ -297,29 +160,27 @@ parser.add_argument('--test-batch-size', type=int, default=10, metavar='N', help
 parser.add_argument('--sub-batch-size', type=int, default=3, metavar='N', help='input batch size for curve specs')
 
 parser.add_argument('--test', type=str, default=None, metavar='net', help='Saved net to use, in addition to any other nets you specify with -n')
+parser.add_argument('--update-test-net',type=h.str2bool, nargs='?', const=True, default=False, help="should update test net")
+parser.add_argument('--onyx', type=h.str2bool, nargs='?', const=True, default=False, help="should output onyx")
+parser.add_argument('--update-test-net-name', type=str, choices = h.getMethodNames(models), default=None, help="update test net name")
 
 parser.add_argument('--epochs', type=int, default=1000, metavar='N', help='number of epochs to train')
 parser.add_argument('--log-freq', type=int, default=10, metavar='N', help='The frequency with which log statistics are printed')
+parser.add_argument('--save-freq', type=int, default=1, metavar='N', help='The frequency with which nets and images are saved')
+parser.add_argument('--number-save-images', type=int, default=0, metavar='N', help='The number of images to save. Should be smaller than test-size.')
+
 parser.add_argument('--lr', type=float, default=0.001, metavar='LR', help='learning rate')
 parser.add_argument('--threshold', type=float, default=-0.01, metavar='TH', help='threshold for lr schedule')
 parser.add_argument('--patience', type=int, default=0, metavar='PT', help='patience for lr schedule')
 parser.add_argument('--factor', type=float, default=0.5, metavar='R', help='reduction multiplier for lr schedule')
 parser.add_argument('--max-norm', type=float, default=10000, metavar='MN', help='the maximum norm allowed in weight distribution')
-parser.add_argument('--time-mult', type=float, default=1, metavar='MN', help='the time falloff for standard training')
-parser.add_argument('--mix-mult', type=float, default=1, metavar='MN', help='the time falloff for mix-spec training')
-parser.add_argument('--width-weight', type=float, default=0.0, metavar='CW', help='the weight of width in a combined loss')
+
 parser.add_argument('--curve-width', type=float, default=None, metavar='CW', help='the width of the curve spec')
 
-parser.add_argument('--tot-weight', type=float, default=0.001, metavar='TW', help='the weight of domain total in a combined loss')
+parser.add_argument('--width-weight', type=float, default=0, metavar='CW', help='the weight of width in a combined loss')
+parser.add_argument('--tot-weight', type=float, default=1, metavar='TW', help='the weight of domain total in a combined loss')
 
-parser.add_argument('--tot-weight-min', type=float, default=0, metavar='TW', help='the minimum weight of domain total in a combined loss')
-parser.add_argument('--tot-weight-time', type=int, default=0, metavar='TW', help='the number of timesteps to use for domain weight scheduling')
-parser.add_argument('--tot-weight-time-pow', type=float, default=1, metavar='TW', help='the time-power to use for domain weight scheduling')
-
-parser.add_argument('--std-weight', type=float, default=1, metavar='TW', help='the weight of standard loss in a combined loss')
 parser.add_argument('--width', type=float, default=0.01, metavar='CW', help='the width of either the line or box')
-parser.add_argument('--loss', choices = [ x for x in dir(Top) if x[-4:] == "Loss" and len(getargspec(getattr(Top, x)).args) == 4]
-                    , default="aiLoss", help='picks which loss function to use for training')
 parser.add_argument('--spec', choices = [ x for x in dir(Top) if x[-4:] == "Spec" and len(getargspec(getattr(Top, x)).args) == 3]
                     , default="boxSpec", help='picks which spec builder function to use for training')
 
@@ -328,15 +189,12 @@ parser.add_argument('--seed', type=int, default=1, metavar='S', help='random see
 parser.add_argument("--use-schedule", type=h.str2bool, nargs='?', 
                     const=True, default=False,
                     help="activate learning rate schedule")
-parser.add_argument("--use-log", type=h.str2bool, nargs='?',
-                    const=True, default=False,
-                    help="Activate log falloff of time")
 
-parser.add_argument('-d', '--domain', choices = h.getMethodNames(domains), action = 'append'
+parser.add_argument('-d', '--domain', sub_choices = None, action = h.SubAct
                     , default=[], help='picks which abstract domains to use for training', required=True)
 
-parser.add_argument('-t', '--test-domain', choices = h.getMethodNames(domains), action = 'append'
-                    , default=[], help='picks which abstract domains to use for testing', required=True)
+parser.add_argument('-t', '--test-domain', sub_choices = None, action = h.SubAct
+                    , default=[], help='picks which abstract domains to use for testing.  Examples include ' + str(domains), required=True)
 
 parser.add_argument('-n', '--net', choices = h.getMethodNames(models), action = 'append'
                     , default=[], help='picks which net to use for training')  # one net for now
@@ -345,12 +203,16 @@ parser.add_argument('-D', '--dataset', choices = [n for (n,k) in inspect.getmemb
                     , default="MNIST", help='picks which dataset to use.')
 
 parser.add_argument('-o', '--out', default="out/", help='picks which net to use for training')
+parser.add_argument('--dont-write', type=h.str2bool, nargs='?', const=True, default=False, help='dont write anywhere if this flag is on')
 parser.add_argument('--test-size', type=int, default=2000, help='number of examples to test with')
 
 parser.add_argument('-r', '--regularize', type=float, default=None, help='use regularization')
-parser.add_argument('--log-ai-loss', type=float, default=None, help='use the log of the output. Must be non-negative. ')
+
 
 args = parser.parse_args()
+
+largest_domain = max([len(h.catStrs(d)) for d in (args.domain)] )
+largest_test_domain = max([len(h.catStrs(d)) for d in (args.test_domain)] )
 
 args.log_interval = int(50000 / (args.batch_size * args.log_freq))
 
@@ -361,49 +223,17 @@ if h.use_cuda:
 else:
     torch.manual_seed(args.seed)
 
-kwargs = {'num_workers': 1, 'pin_memory': True} if h.use_cuda else {}
-
-def loadDataset(train):
-    oargs = {}
-    if args.dataset in ["MNIST", "CIFAR10", "CIFAR100", "FashionMNIST", "PhotoTour"]:
-        oargs['train'] = train
-    elif args.dataset in ["STL10", "SVHN"] :
-        oargs['split'] = 'train' if train else 'test'
-    elif args.dataset in ["LSUN"]:
-        oargs['classes'] = 'train' if train else 'test'
-    else:
-        raise Exception(args.dataset + " is not yet supported")
-
-    if args.dataset in ["MNIST"]:
-        transformer = transforms.Compose([ transforms.ToTensor(),
-                             transforms.Normalize((0.1307,), (0.3081,))])
-    elif args.dataset in ["CIFAR10", "CIFAR100"]:
-        transformer = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-        ])
-    elif args.dataset in ["SVHN"]:
-        transformer = transforms.Compose([
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize((0.5,0.5,0.5), (0.2,0.2,0.2))])
-    else:
-        transformer = transforms.ToTensor()
-
-    return torch.utils.data.DataLoader(
-        getattr(datasets, args.dataset)('../data', download=True,
-                                        transform=transformer, **oargs)
-        , batch_size=args.batch_size if train else args.test_batch_size
-        , shuffle=True, **kwargs)
-
-train_loader = loadDataset(True)
-test_loader = loadDataset(False)
+train_loader = h.loadDataset(args.dataset, args.batch_size, True, False)
+test_loader = h.loadDataset(args.dataset, args.test_batch_size, False, False)
 
 input_dims = train_loader.dataset[0][0].size()
 num_classes = int(max(getattr(train_loader.dataset, 'train_labels' if args.dataset != "SVHN" else 'labels'))) + 1
 
 print("input_dims: ", input_dims)
 print("Num classes: ", num_classes)
+
+vargs = vars(args)
+
 def train(epoch, models):
     for model in models:
         model.train()
@@ -421,7 +251,8 @@ def train(epoch, models):
             with timer:
                 for s in model.getSpec(data,target):
                     model.optimizer.zero_grad()
-                    loss = getattr(model, args.loss)(*s).sum() / data.size()[0]
+
+                    loss = model.aiLoss(*s, **vargs).sum() / data.size()[0]
                     lossy += loss.item()
                     loss.backward()
                     torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
@@ -431,48 +262,49 @@ def train(epoch, models):
             model.addSpeed(timer.getUnitTime())
 
             if batch_idx % args.log_interval == 0:
-                print('Train Epoch {:12} {:20}: {:3} [{:7}/{} ({:.0f}%)] \tAvg sec/ex {:1.8f}\tMult {:.6f}\tTW {:.12f}\tLoss: {:.6f}'.format(
+                print(('Train Epoch {:12} {:'+ str(largest_domain) +'}: {:3} [{:7}/{} ({:.0f}%)] \tAvg sec/ex {:1.8f}\tLoss: {:.6f}').format(
                     model.name,  model.ty.name,
                     epoch, 
                     batch_idx * len(data), len(train_loader.dataset), 100. * batch_idx / len(train_loader), 
                     model.speed,
-                    model.getMult().data[0],
-                    model.getTW(),
                     lossy))
 
     
-                
+num_tests = 0                
 def test(models, epoch, f = None):
+    global num_tests
+    num_tests += 1
     class MStat:
         def __init__(self, model):
             model.eval()
             self.model = model
             self.correct = 0
-            self.test_loss = 0    
             class Stat:
                 def __init__(self, d, dnm):
                     self.domain = d
                     self.name = dnm
                     self.width = 0
+                    self.max_eps = 0
                     self.safe = 0
                     self.proved = 0
                     self.time = 0
-            self.domains = [ Stat(getattr(domains,d), d) for d in args.test_domain ]
+            self.domains = [ Stat(h.parseValues(domains,d), h.catStrs(d)) for d in args.test_domain ]
     model_stats = [ MStat(m) for m in models ]
         
     num_its = 0
+    saved_data_target = []
     for data, target in test_loader:
         if num_its >= args.test_size:
             break
+
+        if num_tests == 1:
+            saved_data_target += list(zip(list(data), list(target)))
+        
         num_its += data.size()[0]
         if h.use_cuda:
             data, target = data.cuda(), target.cuda()
 
         for m in model_stats:
-            with torch.no_grad():
-                m.test_loss += m.model.stdLoss(data, None, target).sum().item() # sum up batch loss
-
-            tyorg = m.model.ty
 
             with torch.no_grad():
                 pred = m.model(data).data.max(1, keepdim=True)[1] # get the index of the max log-probability
@@ -481,29 +313,22 @@ def test(models, epoch, f = None):
             for stat in m.domains:
                 timer = Timer(shouldPrint = False)
                 with timer:
-                    m.model.ty = stat.domain
                     def calcData(data, target):
-                        box = m.model.boxSpec(data, target)[0]
+                        box = stat.domain.box(data, m.model.w, model=m.model, untargeted = True, target=target)
                         with torch.no_grad():
-                            if m.model.ty in POINT_DOMAINS:
-                                preder = m.model(box[0]).data
-                                pred = preder.max(1, keepdim=True)[1] # get the index of the max log-probability
-                                org = m.model(data).max(1,keepdim=True)[1]
-                                stat.proved += float(org.eq(pred).sum())
-                                stat.safe += float(pred.eq(target.data.view_as(pred)).sum())
-                            else: 
-                                bs = m.model(box[1])
-                                stat.width += m.model.widthL(bs).data[0] # sum up batch loss
-                                stat.safe  += m.model.isSafeDom(bs, target).sum().item()
-                                stat.proved += sum([ m.model.isSafeDom(bs, (h.ones(target.size()) * n).long() ).sum().item() for n in range(num_classes) ])
+                            bs = m.model(box)
+                            org = m.model(data).max(1,keepdim=True)[1]
+                            stat.width += bs.diameter().sum().item() # sum up batch loss
+                            stat.proved += bs.isSafe(org).sum().item()
+                            stat.safe += bs.isSafe(target).sum().item()
+                            stat.max_eps += 0 # TODO: calculate max_eps
+
                     if m.model.net.neuronCount() < 5000 or stat.domain in SYMETRIC_DOMAINS:
                         calcData(data, target)
                     else:
                         for d,t in zip(data, target):
                             calcData(d.unsqueeze(0),t.unsqueeze(0))
                 stat.time += timer.getUnitTime()
-            m.model.ty = tyorg
-
                 
     l = num_its # len(test_loader.dataset)
     for m in model_stats:
@@ -512,34 +337,67 @@ def test(models, epoch, f = None):
         if args.use_schedule:
             m.model.lrschedule.step(1 - pr_corr)
         
-        h.printBoth('Test: {:12} trained with {:8} - Mult {:1.8f}, Avg sec/ex {:1.12f}, Average loss: {:8.4f}, Accuracy: {}/{} ({:3.1f}%)'.format(
+        h.printBoth(('Test: {:12} trained with {:'+ str(largest_domain) +'} - Avg sec/ex {:1.12f}, Accuracy: {}/{} ({:3.1f}%)').format(
             m.model.name, m.model.ty.name,
-            m.model.getMult().data[0],
             m.model.speed,
-            m.test_loss / l, 
-            m.correct, l, 100. * pr_corr), f)
+            m.correct, l, 100. * pr_corr), f = f)
         
         model_stat_rec = ""
         for stat in m.domains:
             pr_safe = stat.safe / l
             pr_proved = stat.proved / l
             pr_corr_given_proved = pr_safe / pr_proved if pr_proved > 0 else 0.0
-            h.printBoth("\t{:10} - Width: {:<22.4f} Pr[Proved]={:<1.3f}  Pr[Corr and Proved]={:<1.3f}  Pr[Corr|Proved]={:<1.3f}    Time = {:<7.5f}".format(
-                stat.name, stat.width / l, pr_proved, pr_safe, pr_corr_given_proved, stat.time), f)
+            h.printBoth(("\t{:" + str(largest_test_domain)+"} - Width: {:<36.16f} Pr[Proved]={:<1.3f}  Pr[Corr and Proved]={:<1.3f}  Pr[Corr|Proved]={:<1.3f} AvgMaxEps: {:1.10f} Time = {:<7.5f}").format(
+                stat.name, 
+                stat.width / l, 
+                pr_proved, 
+                pr_safe, pr_corr_given_proved, 
+                stat.max_eps / l,
+                stat.time), f = f)
             model_stat_rec += "{}_{:1.3f}_{:1.3f}_{:1.3f}__".format(stat.name, pr_proved, pr_safe, pr_corr_given_proved)
-        net_file = os.path.join(out_dir, m.model.name + "_checkpoint_"+str(epoch)+"_with_{:1.3f}".format(pr_corr)+"__"+model_stat_rec+".net")
+        prepedname = m.model.ty.name.replace(" ", "_").replace(",", "").replace("(", "_").replace(")", "_").replace("=", "_")
+        net_file = os.path.join(out_dir, m.model.name +"__" +prepedname + "_checkpoint_"+str(epoch)+"_with_{:1.3f}".format(pr_corr))
 
-        h.printBoth("\tSaving netfile: {}\n".format(net_file), f)
+        h.printBoth("\tSaving netfile: {}\n".format(net_file + ".net"), f = f)
 
-        if epoch == 1 or epoch % 10 == 0:
-            torch.save(m.model.net, net_file)
+        if num_tests % args.save_freq == 1 or args.save_freq == 1 and not args.dont_write:
+            torch.save(m.model.net, net_file + ".pynet")
+            
+            with h.mopen(args.dont_write, net_file + ".net", "w") as f2:
+                m.model.net.printNet(f2)
+                f2.close()
+            if args.onyx:
+                nn = copy.deepcopy(m.model.net)
+                nn.remove_norm()
+                torch.onnx.export(nn, h.zeros([1] + list(input_dims)), net_file + ".onyx", 
+                                  verbose=False, input_names=["actual_input"] + ["param"+str(i) for i in range(len(list(nn.parameters())))], output_names=["output"])
 
+
+    if num_tests == 1 and not args.dont_write:
+        img_dir = os.path.join(out_dir, "images")
+        if not os.path.exists(img_dir):
+            os.makedirs(img_dir)
+        for img_num,(img,target) in zip(range(args.number_save_images), saved_data_target[:args.number_save_images]):
+            sz = ""
+            for s in img.size():
+                sz += str(s) + "x"
+            sz = sz[:-1]
+
+            img_file = os.path.join(img_dir, args.dataset + "_" + sz + "_"+ str(img_num))
+            if img_num == 0:
+                print("Saving image to: ", img_file + ".img")
+            with open(img_file + ".img", "w") as imgfile:
+                flatimg = img.view(h.product(img.size()))
+                for t in flatimg.cpu():
+                    print(decimal.Decimal(float(t)).__format__("f"), file=imgfile)
+            with open(img_file + ".class" , "w") as imgfile:
+                print(int(target.item()), file=imgfile)
 
 def createModel(net, domain, domain_name):
     net_weights, net_create = net
     domain.name = domain_name
 
-    net = net_create(num_classes).infer(input_dims)
+    net = net_create()
     net.load_state_dict(net_weights.state_dict())
 
     model = Top(args, net, domain)
@@ -547,7 +405,7 @@ def createModel(net, domain, domain_name):
     if h.use_cuda:
         model.cuda()
 
-    model.optimizer = optim.Adam(model.parameters(), lr=args.lr if not domain in POINT_DOMAINS else 1e-4)
+    model.optimizer = optim.Adam(model.parameters(), lr=args.lr)
     model.lrschedule = optim.lr_scheduler.ReduceLROnPlateau(
         model.optimizer,
         'min',
@@ -557,39 +415,77 @@ def createModel(net, domain, domain_name):
         factor=args.factor,
         verbose=True)
 
+    net.name = net_create.__name__
     model.name = net_create.__name__
 
     return model
-
 
 out_dir = os.path.join(args.out, args.dataset, str(args.net)[1:-1].replace(", ","_").replace("'",""),
                        args.spec, "width_"+str(args.width), str(datetime.now()).replace(":","").replace(" ", "") )
 
 print("Saving to:", out_dir)
 
-if not os.path.exists(out_dir):
+if not os.path.exists(out_dir) and not args.dont_write:
     os.makedirs(out_dir)
 
 print("Starting Training with:")
-with open(os.path.join(out_dir, "config.txt"), "w") as f:
+with h.mopen(args.dont_write, os.path.join(out_dir, "config.txt"), "w") as f:
     for k in sorted(vars(args)):
-        h.printBoth("\t"+k+": "+str(getattr(args,k)), f)
+        h.printBoth("\t"+k+": "+str(getattr(args,k)), f = f)
 print("")
 
+def buildNet(n):
+    n = n(num_classes)
+    if args.dataset in ["MNIST"]:
+        n = Seq(Normalize([0.1307], [0.3081] ), n)
+    elif args.dataset in ["CIFAR10", "CIFAR100"]:
+        n = Seq(Normalize([0.4914, 0.4822, 0.4465], [0.2023, 0.1994, 0.2010]), n)
+    elif dataset in ["SVHN"]:
+        n = Seq(Normalize([0.5,0.5,0.5], [0.2, 0.2, 0.2]), n)
+
+    n = n.infer(input_dims)
+    n.clip_norm()
+    return n
+
 if not args.test is None:
-    net = torch.load(args.test)
-    nets = [ lambda *args, **kargs: net ]
+
+    test_name = None
+
+    def loadedNet():
+        if test_name is not None:
+            n = getattr(models,test_name)
+            n = buildNet(n)
+            n.clip_norm()
+            return n
+        else:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", SourceChangeWarning)
+                return torch.load(args.test)
+
+    net = loadedNet()
+    if args.update_test_net_name is not None:
+        test_name = args.update_test_net_name
+    elif args.update_test_net and '__name__' in dir(net):
+        test_name = net.__name__
+
+    if test_name is not None:
+        loadedNet.__name__ = test_name
+
+    nets = [ (net, loadedNet) ]
+
 elif args.net == []:
     raise Exception("Need to specify at least one net with either -n or --test")
 else:
     nets = []
 
-nets += [ getattr(models,n) for n in args.net ] 
+for n in args.net:
+    m = getattr(models,n)
+    net_create = (lambda m: lambda: buildNet(m))(m) # why doesn't python do scoping right?  This is a thunk.  It is bad.
+    net_create.__name__ = n
+    net = buildNet(m)
+    net.__name__ = n
+    nets += [ (net, net_create) ]
 
-
-nets = [ (n(num_classes).infer(input_dims),n) for n in nets ]
-
-for net, net_create in nets:
     print("Name: ", net_create.__name__)
     print("Number of Neurons (relus): ", net.neuronCount())
     print("Number of Parameters: ", sum([h.product(s.size()) for s in net.parameters()]))
@@ -597,17 +493,19 @@ for net, net_create in nets:
 
 
 if args.domain == []:
-    models = [ createModel(net, domains.Box, "Box") for net in nets]
+    models = [ createModel(net, domains.Box(args.width), "Box") for net in nets]
 else:
-    models = h.flat([[createModel(net, getattr(domains,d), d) for net in nets] for d in args.domain])
+    models = h.flat([[createModel(net, h.parseValues(domains,d), h.catStrs(d)) for net in nets] for d in args.domain])
 
-with open(os.path.join(out_dir, "log.txt"), "w") as f:
 
+with h.mopen(args.dont_write, os.path.join(out_dir, "log.txt"), "w") as f:
     startTime = timer()
     for epoch in range(1, args.epochs + 1):
         if (epoch - 1) % args.test_freq == 0:
             with Timer("test before epoch "+str(epoch),"sample", 10000):
                 test(models, epoch, f)
-        h.printBoth("Elapsed-Time: {:.2f}s\n".format(timer() - startTime), f)
+        h.printBoth("Elapsed-Time: {:.2f}s\n".format(timer() - startTime), f = f)
+        if args.epochs <= args.test_freq:
+            break
         with Timer("train","sample", 60000):
             train(epoch, models)

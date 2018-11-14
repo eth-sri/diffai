@@ -2,6 +2,7 @@
 # Copyright (c) 2018 Secure, Reliable, and Intelligent Systems Lab (SRI), ETH Zurich
 # This software is distributed under the MIT License: https://opensource.org/licenses/MIT
 # SPDX-License-Identifier: MIT
+# Author: Matthew Mirman (matt@mirman.com)
 # For more information see https://github.com/eth-sri/diffai
 
 # THE SOFTWARE IS PROVIDED "AS-IS" WITHOUT ANY WARRANTY OF ANY KIND, EITHER
@@ -24,386 +25,328 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.autograd
-import helpers as h
 
-Point = h.dtype
+import math
+import numpy as np
 
-class FGSM(object):
-    @staticmethod    
-    def attack(model, epsilon, x, target):
-        xn = Point(x.data)
-        xn.requires_grad_()
-        model.optimizer.zero_grad()
-        loss = model.stdLoss(xn, None, target).sum()
-        loss.backward()
-        r = x + Point(epsilon * torch.sign(xn.grad.data))
-        model.optimizer.zero_grad()
-        return r
+try:
+    from . import helpers as h
+    from . import ai
+except:
+    import helpers as h
+    import ai
 
-class PGD(object):
-    @staticmethod    
-    def attack(model, epsilon, xo, target, k = 5):
-        epsilon /= k
-        x = xo
-        for _ in range(k):
-            x = FGSM.attack(model, epsilon, x, target)
-        return x
+class DList(object):
+    Domain = ai.ListDomain
+    def __init__(self, *al):
+        if len(al) == 0:
+            al = [("Point()", 1.0), ("Box()", 0.1)]
 
-class LPGD(object):
-    @staticmethod
-    def attack(*args):
-        return PGD.attack(*args, k = 20)
+        self.al = [(eval(a) if type(a) is str else a, float(aw)) for a,aw in al]
+        self.div = 1.0 / sum(aw for _,aw in self.al)
 
-class MI_FGSM(object):
-    @staticmethod    
-    def attack(model, epsilon, x, target, k = 20, mu = 0.5):
-        epsilon /= k
-        x = Point(x.data, requires_grad=True)
-        gradorg = Point(h.zeros(x.shape))
-        for _ in range(k):
+    def box(self, *args, **kargs):
+        return self.Domain(a.box(*args, **kargs) for a,_ in self.al)
+
+    def boxBetween(self, *args, **kargs):
+        return self.Domain(a.box(*args, **kargs) for a,_ in self.al)
+
+    def line(self, *args, **kargs):
+        return self.Domain(a.line(*args, **kargs) for a,_ in self.al)
+
+    def loss(self, dom, *args, **kargs):
+        return sum(a.loss(ad, *args, **kargs) * aw for (a, aw), ad in zip(self.al, dom.al)) * self.div
+        
+    def widthLoss(self, dom, **args):
+        return sum(a.widthLoss(ad, **args) * aw for (a, aw), ad in zip(self.al, dom.al)) * self.div
+
+    def regLoss(self, dom, *args, **kargs):
+        return sum(a.regLoss(ad, *args, **kargs) * aw for (a, aw), ad in zip(self.al, dom.al)) * self.div
+
+    def combinedLoss(self, dom, *args, **kargs):
+        return sum(a.combinedLoss(ad, *args, **kargs) * aw for (a, aw), ad in zip(self.al, dom.al)) * self.div
+
+    def __str__(self):
+        return "DList(%s)" % h.sumStr("("+str(a)+","+str(w)+")" for a,w in self.al)
+
+class Mix(DList):
+    def __init__(self, a="Point()", b="Box()", aw = 1.0, bw = 0.1):
+        super(Mix, self).__init__((a,aw), (b,bw))
+
+class DProb(object):
+    Domain = ai.TaggedDomain
+    def __init__(self, *doms):
+        if len(doms) == 0:
+            doms = [("Point()", 0.8), ("Box()", 0.2)]
+        div = 1.0 / sum(float(aw) for _,aw in doms)
+        self.domains = [eval(a) if type(a) is str else a for a,_ in doms]
+        self.probs = [ div * float(aw)  for _,aw in doms]
+
+    def chooseDom(self):
+        return self.domains[np.random.choice(len(self.domains), p = self.probs)]
+
+    def box(self, *args, **kargs):
+        domain = self.chooseDom()
+        return self.Domain(domain.box(*args, **kargs), tag = domain)
+
+    def line(self, *args, **kargs):
+        domain = self.chooseDom()
+        return self.Domain(domain.line(*args, **kargs), tag = domain)
+
+    def loss(self, dom, target, **args):
+        return dom.tag.loss(dom.a, target, **args)
+        
+    def widthLoss(self, dom, **args):
+        return dom.tag.widthLoss(dom.a, **args)
+
+    def regLoss(self, dom, *args, **kargs):
+        return dom.tag.regLoss(dom.a, *args, **kargs)
+
+    def combinedLoss(self, dom, *args, **kargs):
+        return dom.tag.combinedLoss(dom.a, *args, **kargs)
+
+    def __str__(self):
+        return "DProb(%s)" % h.sumStr("("+str(a)+","+str(w)+")" for a,w in zip(self.domains, self.probs))
+
+class Coin(DProb):
+    def __init__(self, a="Point()", b="Box()", ap = 0.8, bp = 0.2):
+        super(Coin, self).__init__((a,ap), (b,bp))
+
+class Point(object):
+    Domain = h.dtype
+    def __init__(self, **kargs):
+        pass
+
+    def box(self, original, *args, **kargs):
+        return original
+
+    def line(self, original, other, *args, **kargs): 
+        return (original + other) / 2
+
+    def loss(self, dom, target, **args):
+        return F.nll_loss(dom.log_softmax(), target, size_average = False, reduce = False)
+
+    def widthLoss(self, dom, **args):
+        return 0
+    
+    def combinedLoss(self, dom, target, loss_fn, *args, **kargs):
+        return loss_fn(dom, target)
+
+    def regLoss(self, dom, target, loss_fn, *args, **kargs):
+        return loss_fn(dom, target)
+
+    def boxBetween(self, o1, o2, *args, **kargs):
+        return (o1 + o2) / 2
+
+    def __str__(self):
+        return "Point()"
+
+class PointA(Point):
+    def boxBetween(self, o1, o2, *args, **kargs):
+        return o1
+
+    def __str__(self):
+        return "PointA()"
+
+class PointB(Point):
+    def boxBetween(self, o1, o2, *args, **kargs):
+        return o2
+
+    def __str__(self):
+        return "PointB()"
+
+
+class Normal(Point):
+    def __init__(self, w = None, **kargs):
+        self.epsilon = w
+        
+    def box(self, original, epsilon, *args, **kargs):
+        """ original = mu = mean, epsilon = variance"""
+        if not self.epsilon is None:
+            epsilon = self.epsilon
+
+        inter = torch.randn_like(original, device = h.device) * epsilon
+        return original + inter
+
+    def __str__(self):
+        return "Normal(%s)" % ("" if self.epsilon is None else str(self.epsilon))
+
+class MI_FGSM(Point):
+
+    def __init__(self, w = None, r = 20.0, k = 100, mu = 0.8, should_end = True, restart = None, searchable=False,**kargs):
+        self.epsilon = w
+        self.k = k
+        self.mu = mu
+        self.r = float(r)
+        self.should_end = should_end
+        self.restart = restart
+        self.searchable = searchable
+
+    def box(self, original, epsilon, model, target = None, untargeted = False, **kargs):
+        if target is None:
+            untargeted = True
+            with torch.no_grad():
+                target = model(original).max(1)[1]
+        return self.attack(model, epsilon, original, untargeted, target, **kargs)
+
+    def boxBetween(self, o1, o2, model, target = None, *args, **kargs):
+        return self.attack(model, (o1 - o2).abs() / 2, (o1 + o2) / 2, target, **kargs)
+
+    def attack(self, model, epsilon, xo, untargeted, target, loss_function=ai.stdLoss):
+        if not self.epsilon is None:
+            epsilon = self.epsilon
+        x = nn.Parameter(xo.clone(), requires_grad=True)
+        gradorg = h.zeros(x.shape)
+        is_eq = 1
+        for i in range(self.k):
+            if self.restart is not None and i % int(self.k / self.restart) == 0:
+                x = is_eq * (torch.randn_like(xo) * epsilon + xo) + (1 - is_eq) * x
+                x = nn.Parameter(x, requires_grad = True)
+
             model.optimizer.zero_grad()
-            loss = model.stdLoss(x, None, target).sum()
+
+            out = model(x)
+            loss = loss_function(out, target)
+
             loss.backward()
-            oth = x.grad / torch.norm(x.grad, p=1)
-            gradorg = gradorg * mu + oth
-            x.data = (x + epsilon * torch.sign(gradorg)).data
+            with torch.no_grad():
+                oth = x.grad / torch.norm(x.grad, p=1)
+                gradorg *= self.mu 
+                gradorg += oth
+                grad = (self.r * epsilon / self.k) * ai.mysign(gradorg)
+                if self.should_end:
+                    is_eq = ai.mulIfEq(grad, out, target)
+                x = (x + grad * is_eq) if untargeted else (x - grad * is_eq)
+                x = xo + torch.clamp(x - xo, -epsilon, epsilon)
+                x.requires_grad_()
+
+        model.optimizer.zero_grad()
         return x
+
+    def boxBetween(self, o1, o2, model, target, *args, **kargs):
+        raise "Not boxBetween is not yet supported by MI_FGSM"
+
+    def __str__(self):
+        return "MI_FGSM(%s)" % (("" if self.epsilon is None else "w="+str(self.epsilon)+",")
+                                + ("" if self.k == 5 else "k="+str(self.k)+",")
+                                + ("" if self.r == 5.0 else "r="+str(self.r)+",")
+                                + ("" if self.mu == 0.8 else "r="+str(self.mu)+",")
+                                + ("" if self.should_end else "should_end=False"))
+
+
+class PGDK(MI_FGSM):
+    def __init__(self, w = None, r = 5.0, k = 5, **kargs):
+        super(PGDK,self).__init__(w=w, r=r, k = k, mu = 0, **kargs)
+
+    def __str__(self):
+        return "PGDK(%s)" % (("" if self.epsilon is None else "w="+str(self.epsilon)+",")
+                              + ("" if self.k == 5 else "k="+str(self.k)+",")
+                              + ("" if self.r == 5.0 else "r="+str(self.r)+",")
+                              + ("" if self.should_end else "should_end=False"))
+
+class PGD(PGDK):
+
+    def __init__(self, k = 5, **kargs):
+        super(PGD, self).__init__(r = 1, k=k, **kargs)
+
+    def __str__(self):
+        return "PGD(%s)" % (("" if self.epsilon is None else "w="+str(self.epsilon)+",")
+                              + ("" if self.k == 5 else "k="+str(self.k)+",")
+                              + ("" if self.should_end else "should_end=False"))
+
+class NormalAdv(Point):
+    def __init__(self, a="PGD()", w = None):
+        self.a = (eval(a) if type(a) is str else a)
+        self.epsilon = w
+
+    def box(self, original, epsilon, *args, **kargs):
+        if not self.epsilon is None:
+            epsilon = self.epsilon
+        epsilon = torch.randn(original.size()[0:1], device = h.device)[0] * epsilon
+        return self.a.box(original, epsilon,*args, **kargs)
+
+    def __str__(self):
+        return "NormalAdv(%s)" % ( str(self.a) + ("" if self.epsilon is None else ",w="+str(self.epsilon)))
+
+
+class AdvDom(Point):
+    def __init__(self, a="PGD()", b="Box()", width = None):
+        self.a = (eval(a) if type(a) is str else a)
+        self.b = (eval(b) if type(b) is str else b)
+        self.width = width
+
+    def box(self, original, epsilon, *args, **kargs):
+        adv = self.a.box(original, epsilon,*args, **kargs)
+        return self.b.boxBetween(original, adv.ub(), *args, w=self.width, **kargs)
+
+    def loss(self, *args, **kargs):
+        return self.b.loss(*args, **kargs)
+
+    def widthLoss(self, *args, **kargs):
+        return self.b.widthLoss(*args, **kargs)
+
+    def regLoss(self, *args, **kargs):
+        return self.b.regLoss(*args, **kargs)
+
+    def combinedLoss(self, *args, **kargs):
+        return self.b.combinedLoss(*args, **kargs)
+
+    def boxBetween(self, o1, o2, *args, **kargs):
+        original = (o1 + o2) / 2
+        adv = self.a.boxBetween(o1, o2, *args, **kargs)
+        return self.b.boxBetween(original, adv.ub(), *args, **kargs)
+
+    def __str__(self):
+        return "AdvDom(%s)" % (("" if self.width is None else "width="+str(self.width)+",")
+                               + str(self.a) + "," + str(self.b))
+
+class BiAdv(AdvDom):
+    def box(self, original, epsilon, **kargs):
+        adv = self.a.box(original, epsilon,**kargs)
+        extreme = (adv.ub() - original).abs()
+        return self.b.boxBetween(original - extreme, original + extreme, **kargs)
+    
+    def boxBetween(self, o1, o2, *args, **kargs):
+        original = (o1 + o2) / 2
+        adv = self.a.boxBetween(o1, o2, *args, **kargs)
+        extreme = (adv.ub() - original).abs()
+        return self.b.boxBetween(original - extreme, original + extreme, *args, **kargs)
+
+    def __str__(self):
+        return "BiAdv" + AdvDom.__str__(self)[6:]
+
 
 class HBox(object):
+    Domain = ai.HybridZonotope
 
-    def creluBoxy(self):
-        if self.errors is None:
-            if self.beta is None:
-                return self.new(F.relu(self.head), None, None)
-            er = self.beta 
-            mx = F.relu(self.head + er)
-            mn = F.relu(self.head - er)
-            return self.new((mn + mx) / 2, (mx - mn) / 2 , None)
-    
-        aber = torch.abs(self.errors)
-    
-        sm = torch.sum(aber, 0) 
-    
-        if not self.beta is None:
-            sm += self.beta
-    
-        mx = self.head + sm
-        mn = self.head - sm
+    def __init__(self, w = None, tot_weight = None, width_weight = None, pow_loss = None, log_loss = False, searchable = True, **kargs):
+        self.w = w
+        self.tot_weight = tot_weight
+        self.width_weight = width_weight
+        self.pow_loss = pow_loss
+        self.searchable = searchable
+        self.log_loss = log_loss
+
+    def __str__(self):
+        return "HBox(%s)" % ("" if self.w is None else "w="+str(self.w))
+
+    def boxBetween(self, o1, o2, *args, **kargs):
+        batches = o1.size()[0]
+        num_elem = h.product(ei.size()[1:])
+        ei = h.getEi(batches, num_elem)
         
-        should_box = mn.lt(0) * mx.gt(0)
-        gtz = self.head.gt(0).float()
-        mx /= 2
-        newhead = h.ifThenElse(should_box, mx, gtz * self.head)
-        newbeta = h.ifThenElse(should_box, mx, gtz * (self.beta if not self.beta is None else 0))
-        newerr = (1 - should_box.float()) * gtz * self.errors
-    
-        return self.new(newhead, newbeta , newerr)
-    
-    def creluSwitch(self):
-        if self.errors is None:
-            if self.beta is None:
-                return self.new(F.relu(self.head), None, None)
-            er = self.beta 
-            mx = F.relu(self.head + er)
-            mn = F.relu(self.head - er)
-            return self.new((mn + mx) / 2, (mx - mn) / 2 , None)
-    
-        aber = torch.abs(self.errors)
-    
-        sm = torch.sum(aber, 0) 
-    
-        if not self.beta is None:
-            sm += self.beta
-    
-        mn = self.head - sm
-        mx = sm
-        mx += self.head
-        
-        should_box = mn.lt(0) * mx.gt(0)
-        gtz = self.head.gt(0)
-        
-        mn.neg_()
-        should_boxer = mn.gt(mx)
+        if len(o1.size()) > 2:
+            ei = ei.contiguous().view(num_elem, *original.size())
 
-        mn /= 2
-        newhead = h.ifThenElse(should_box, h.ifThenElse(should_boxer, mx / 2, self.head + mn ), gtz.float() * self.head)
-        zbet =  self.beta if not self.beta is None else 0
-        newbeta = h.ifThenElse(should_box, h.ifThenElse(should_boxer, mx / 2, mn + zbet), gtz.float() * zbet)
-        newerr  = h.ifThenElseL(should_box, 1 - should_boxer, gtz).float() * self.errors
-    
-        return self.new(newhead, newbeta , newerr)
+        return self.Domain((o1 + o2) / 2, None, ei * (o1 - o2).abs() / 2).checkSizes()
 
-
-    def creluSmooth(self):
-        if self.errors is None:
-            if self.beta is None:
-                return self.new(F.relu(self.head), None, None)
-            er = self.beta 
-            mx = F.relu(self.head + er)
-            mn = F.relu(self.head - er)
-            return self.new((mn + mx) / 2, (mx - mn) / 2 , None)
-    
-        aber = torch.abs(self.errors)
-    
-        sm = torch.sum(aber, 0) 
-    
-        if not self.beta is None:
-            sm += self.beta
-    
-        mn = self.head - sm
-        mx = sm
-        mx += self.head
-        
-
-        nmn = F.relu(-1 * mn)
-                
-        zbet =  (self.beta if not self.beta is None else 0)
-        newheadS = self.head + nmn / 2
-        newbetaS = zbet + nmn / 2
-        newerrS = self.errors
-
-        mmx = F.relu(mx)
-
-        newheadB = mmx / 2
-        newbetaB = newheadB
-        newerrB = 0
-    
-        eps = 0.0001
-        t = nmn / (mmx + nmn + eps) # mn.lt(0).float() * F.sigmoid(nmn - nmx)
-
-        shouldnt_zero = mx.gt(0).float()
-
-        newhead = shouldnt_zero * ( (1 - t) * newheadS + t * newheadB)
-        newbeta = shouldnt_zero * ( (1 - t) * newbetaS + t * newbetaB)
-        newerr =  shouldnt_zero * ( (1 - t) * newerrS  + t * newerrB)
-
-        return self.new(newhead, newbeta , newerr)
-
-    def customRelu(self):
-        return self.creluBoxy()
-
-    def relu(self):
-        return self.customRelu()
-    
-    def __init__(self, head, beta, errors):
-        self.head = head
-        self.errors = errors
-        self.beta = beta
-
-    def checkSizes(self):
-        if not self.errors is None:
-            if not self.errors.size()[1:] == self.head.size():
-                raise Exception("Such bad sizes on error")
-        if not self.beta is None:
-            if not self.beta.size() == self.head.size():
-                raise Exception("Such bad sizes on beta")
-            if self.beta.lt(0.0).any():
-                #raise Exception("Beta Below Zero")
-                self.beta.abs_()
-            
-        return self
-    
-    def new(self, *args, **kargs):
-        return self.__class__(*args, **kargs).checkSizes()
-
-    def __mul__(self, flt):
-        assert type(flt) in [float, int]
-        return self.new(self.head * flt, None if self.beta is None else self.beta * flt, None if self.errors is None else self.errors * flt)
-    
-    def __truediv__(self, flt):
-        assert type(flt) in [float, int]
-        flt = 1. / flt
-        return self.new(self.head * flt, None if self.beta is None else self.beta * flt, None if self.errors is None else self.errors * flt)
-
-    def __add__(self, other):
-        if isinstance(other, HBox):
-            return self.new(self.head + other.head, other.beta if self.beta is None else (self.beta if other.beta is None else self.beta + other.beta), other.errors if self.errors is None else (self.errors if other.errors is None else self.errors + other.errors))
-        else:
-            # other has to be a standard variable or tensor
-            return self.new(self.head + other, self.beta, self.errors)
-
-    def __sub__(self, other):
-        if isinstance(other, HBox):
-            return self.new(self.head - other.head
-                            , other.beta if self.beta is None else (self.beta if other.beta is None else self.beta + other.beta),
-                            (None if other.errors is None else -other.errors) if self.errors is None else (self.errors if other.errors is None else self.errors - other.errors))
-        else:
-            # other has to be a standard variable or tensor
-            return self.new(self.head - other, self.beta, self.errors)
-
-    def bmm(self, other):
-        
-        hd = self.head.unsqueeze(1).bmm(other).squeeze(1)
-        bet = None if self.beta is None else self.beta.unsqueeze(1).bmm(other.abs()).squeeze(1)
-
-        if self.errors is None:
-            er = None
-        else:
-            bigOther = other.expand(self.errors.size()[0], -1, -1, -1)
-            h = self.errors
-            inter = h.view(-1, *h.size()[2:]).unsqueeze(1)
-            bigOther = bigOther.contiguous().view(-1, *bigOther.size()[2:])
-            er = inter.bmm(bigOther)
-            er = er.view(*h.size()[:-1], -1)
-        return self.new(hd, bet, er)
-
-    def conv(self, conv, weight, bias = None, stride = None, **kargs):
-        h = self.errors
-        inter = h if h is None else h.view(-1, *h.size()[2:])
-        hd = conv(self.head, weight, bias, stride = stride, **kargs)
-        res = h if h is None else conv(inter, weight, bias=None, stride = stride, **kargs)
-
-        return self.new( hd
-                       , None if self.beta is None else conv(self.beta, weight.abs(), bias = None, stride = stride, **kargs)
-                       , h if h is None else res.view(h.size()[0], h.size()[1], *res.size()[1:]))
-
-    def conv1d(self, *args, **kargs):
-        return self.conv(F.conv1d, *args, **kargs)
-                   
-    def conv2d(self, *args, **kargs):
-        return self.conv(F.conv2d, *args, **kargs)                   
-
-    def conv3d(self, *args, **kargs):
-        return self.conv(F.conv3d, *args, **kargs)
-        
-    def matmul(self, other):
-        return self.new(self.head.matmul(other), None if self.beta is None else self.beta.matmul(other.abs()), None if self.errors is None else self.errors.matmul(other))
-
-    def unsqueeze(self, i):
-        return self.new(self.head.unsqueeze(i), None if self.beta is None else self.beta.unsqueeze(i), None if self.errors is None else self.errors.unsqueeze(i + 1))
-
-    def squeeze(self, dim):
-        return self.new(self.head.squeeze(dim),
-                        None if self.beta is None else self.beta.squeeze(dim),
-                        None if self.errors is None else self.errors.squeeze(dim + 1 if dim >= 0 else dim))    
-
-    def float(self):
-        return self # if we weren't already a float theres a problem
-    
-    def sum(self):
-        return self.new(torch.sum(self.head,1), None if self.beta is None else torch.sum(self.beta,1), None if self.errors is None else torch.sum(self.errors, 2))
-
-    def view(self,*newshape):
-        return self.new(self.head.view(*newshape), 
-                        None if self.beta is None else self.beta.view(*newshape),
-                        None if self.errors is None else self.errors.view(self.errors.size()[0], *newshape))
-
-    def gather(self,dim, index):
-        return self.new(self.head.gather(dim, index), 
-                        None if self.beta is None else self.beta.gather(dim, index),
-                        None if self.errors is None else self.errors.gather(dim + 1, index.expand([self.errors.size()[0]] + list(index.size()))))
-    
-    def concretize(self):
-        if self.errors is None:
-            return self
-
-        return self.new(self.head, torch.sum(self.concreteErrors().abs(),0), None) # maybe make a box?
-    
-    def cat(self,other, dim=0):
-
-        def catNonNullErrors(er1, er2): # the way of things is ugly
-            erS, erL = (er1, er2)
-            sS, sL = (erS.size()[0], erL.size()[0])
-
-            if sS == sL: # here we know we used transformers on either side which didnt introduce new error terms (this is a hack).
-                return erS.cat(erL, dim + 1)
-
-            extrasS = h.zeros([sL] + list(erS.size()[1:]))
-            extrasL = h.zeros([sS] + list(erL.size()[1:]))
-
-            erL = torch.cat((extrasL, erL), dim=0)
-            erS = torch.cat((erS, extrasS), dim=0)
-
-            return erS.cat(erL, dim + 1)
-        
-        return self.new(torch.cat((self.head, other.head), dim = dim), 
-                        other.beta   if self.beta   is None else (self.beta if other.beta is None else # this cant work here, other.errors has the wrong shape 
-                                                                  torch.cat((self.beta, other.beta), dim = dim)),
-                        other.errors if self.errors is None else (self.errors if other.errors is None else
-                                                                  catNonNullErrors(self.errors, other.errors)))
-
-
-    def split(self, split_size, dim = 0):
-        heads = list(self.head.split(split_size, dim))
-        betas = list(self.beta.split(split_size, dim)) if not self.beta is None else None
-        errorss = list(self.errors.split(split_size, dim + 1)) if not self.errors is None else None
-        
-        def makeFromI(i):
-            return self.new( heads[i], 
-                             None if betas is None else betas[i], 
-                             None if errorss is None else errorss[i])
-        return tuple(makeFromI(i) for i in range(len(heads)))
-
-        
-    
-    def concreteErrors(self):
-        if self.beta is None and self.errors is None:
-            raise Exception("shouldn't have both beta and errors be none")
-        if self.errors is None:
-            return self.beta.unsqueeze(0)
-        if self.beta is None:
-            return self.errors
-        return torch.cat([self.beta.unsqueeze(0),self.errors], dim=0)
-
-    def softplus(self):
-        if self.errors is None:
-            if self.beta is None:
-                return self.new(F.softplus(self.head), None , None)
-            tp = F.softplus(self.head + self.beta)
-            bt = F.softplus(self.head - self.beta)
-            return self.new((tp + bt) / 2, (tp - bt) / 2 , None)
-
-        errors = self.concreteErrors()
-        o = h.ones(self.head.size())
-
-        def sp(hd):
-            return F.softplus(hd) # torch.log(o + torch.exp(hd))  # not very stable
-        def spp(hd):
-            ehd = torch.exp(hd)
-            return ehd.div(ehd + o)
-        def sppp(hd):
-            ehd = torch.exp(hd)
-            md = ehd + o
-            return ehd.div(md.mul(md))
-
-        fa = sp(self.head)
-        fpa = spp(self.head)
-
-        a = self.head
-
-        k = torch.sum(errors.abs(), 0) 
-
-        def evalG(r):
-            return r.mul(r).mul(sppp(a + r))
-
-        m = torch.max(evalG(h.zeros(k.size())), torch.max(evalG(k), evalG(-k)))
-        m = h.ifThenElse( a.abs().lt(k), torch.max(m, torch.max(evalG(a), evalG(-a))), m)
-        m /= 2
-        
-        return self.new(fa, m if self.beta is None else m + self.beta.mul(fpa), None if self.errors is None else self.errors.mul(fpa))
-
-    def center(self):
-        return self.head
-
-    def lb(self):
-        return self.head - torch.sum(self.concreteErrors().abs(), 0)
-
-    def ub(self):
-        return self.head + torch.sum(self.concreteErrors().abs(), 0)        
-
-    def size(self):
-        return self.head.size()
-
-    def diameter(self):
-        abal = torch.abs(self.concreteErrors()).permute(1,0,2)
-        sm = torch.sum(abal, 1)
-        return torch.sum(sm, 1) # perimeter
-
-    @staticmethod
-    def box(original, radius):
+    def box(self, original, radius, **kargs):
         """
         This version of it is slow, but keeps correlation down the line.
         """
+        if not self.w is None:
+            radius = self.w
+
         batches = original.size()[0]
         num_elem = h.product(original.size()[1:])
         ei = h.getEi(batches,num_elem)
@@ -411,10 +354,12 @@ class HBox(object):
         if len(original.size()) > 2:
             ei = ei.contiguous().view(num_elem, *original.size())
 
-        return HBox(original, None, ei * radius).checkSizes()
+        return self.Domain(original, None, ei * radius).checkSizes()
 
-    @staticmethod
-    def line(o1, o2, w = None):
+    def line(self, o1, o2, w = None, **kargs):
+        if not self.w is None:
+            w = self.w
+
         ln = ((o2 - o1) / 2).unsqueeze(0)
         if not w is None and w > 0.0:
             batches = o1.size()[0]
@@ -423,14 +368,54 @@ class HBox(object):
             if len(o1.size()) > 2:
                 ei = ei.contiguous().view(num_elem, *o1.size())
             ln = torch.cat([ln, ei * w])
-        return HBox((o1 + o2) / 2, None, ln ).checkSizes()
+        return self.Domain((o1 + o2) / 2, None, ln ).checkSizes()
+
+    def loss(self, dom, target, width_weight = 0, tot_weight = 1, **args):
+        if not self.width_weight is None:
+            width_weight = self.width_weight
+        if not self.tot_weight is None:
+            tot_weight = self.tot_weight
+        
+        r = -h.preDomRes(dom, target).lb()
+        tot = F.softplus(r.max(1)[0])      # kinda works        
+
+        if self.log_loss:
+            tot = (tot + 1).log()
+        if self.pow_loss is not None and self.pow_loss > 0 and self.pow_loss != 1:
+            tot = tot.pow(self.pow_loss)
+
+        ls = tot * tot_weight
+        if width_weight > 0:
+            ls += dom.diameter() * width_weight
+
+        return ls / (width_weight + tot_weight)
+
+    def widthLoss(self, dom, **kargs):
+        return dom.diameter()
+
+    def regLoss(self, dom, target, loss_fn, *args, **kargs):
+        return torch.max(loss_fn(dom.lb(), target), 
+                         loss_fn(dom.ub(), target))
+
+    def combinedLoss(self, dom, target, loss_fn, *args, only_max=False, **kargs):
+        mx = target.argmax(1)
+        ups = dom.ub()
+        r = range(ups.size()[0])
+        if only_max:
+            ups[r,mx] = ups.min(1)[0]
+            ups_vals = ups.max(1)[0]
+            diff = F.softplus(ups_vals - dom.lb()[r,mx])
+            return diff * diff
+        else:
+            ups[r,mx] = dom.lb()[r,mx]
+            return loss_fn(ups, target)
+
 
 class Box(HBox):
-    def __init__(self, *args, **kargs):
-        super(Box, self).__init__(*args, **kargs)
+    def __str__(self):
+        return "Box(%s)" % ("" if self.w is None else "w="+str(self.w))
 
-    @staticmethod
-    def box(original, diameter):  
+    def box(self, original, radius, **kargs):  
         """
         This version of it takes advantage of betas being uncorrelated.  
         Unfortunately they stay uncorrelated forever.  
@@ -438,125 +423,67 @@ class Box(HBox):
         creates lots of 0 errors which get accounted for by the calcultion of the newhead in relu 
         which is apparently worse than not accounting for errors.
         """
-        return Box(original, h.ones(original.size()) * diameter, None).checkSizes()
+        if not self.w is None:
+            radius = self.w
+        return self.Domain(original, h.ones(original.size()) * radius, None).checkSizes()
     
-    @staticmethod
-    def line(o1, o2, w = None):
-        return Box((o1 + o2) / 2, ((o2 - o1) / 2).abs(), None).checkSizes()
+    def line(self, o1, o2, w = 0, **kargs):
+        if not self.w is None:
+            w = self.w
+        return self.Domain((o1 + o2) / 2, ((o2 - o1) / 2).abs() + h.ones(o2.size()) * w, None).checkSizes()
+
+    def boxBetween(self, o1, o2, *args, **kargs):
+        return self.line(o1, o2, **kargs)
 
 
 class ZBox(HBox):
-    def __init__(self, *args, **kargs):
-        super(ZBox, self).__init__(*args, **kargs)
 
-    @staticmethod
-    def copy(hbox):
-        return ZBox(hbox.head, hbox.beta, hbox.errors)
-    
-    @staticmethod
-    def box(*args, **kargs):
-        return ZBox.copy(HBox.box(*args, **kargs))
+    def __str__(self):
+        return "ZBox(%s)" % ("" if self.w is None else "w="+str(self.w))
 
-    @staticmethod
-    def line(*args, **kargs):
-        return ZBox.copy(HBox.line(*args, **kargs))
-
-    def applySuper(self, ret):
-        batches = ret.head.size()[0]
-        num_elem = h.product(ret.head.size()[1:])
-        ei = h.getEi(batches, num_elem)
-
-        if len(ret.head.size()) > 2:
-            ei = ei.contiguous().view(num_elem, *ret.head.size())
-
-        ret.errors = torch.cat([ ret.errors, ei * ret.beta ]) if not ret.beta is None else ret.errors
-        ret.beta = None
-        return ret.checkSizes()
-    
-    def softplus(self):
-        return self.applySuper(super(ZBox,self).softplus())
-
-    def relu(self):
-        return self.applySuper(super(ZBox,self).relu())
-
+    Domain = ai.Zonotope
 
 class HSwitch(HBox):
-    def __init__(self, *args, **kargs):
-        super(HSwitch, self).__init__(*args, **kargs)
+    def __str__(self):
+        return "HSwitch(%s)" % ("" if self.w is None else "w="+str(self.w))
 
-    def customRelu(self):
-        return self.creluSwitch()
-
-    @staticmethod
-    def copy(hbox):
-        return HSwitch(hbox.head, hbox.beta, hbox.errors)
-    
-    @staticmethod
-    def box(*args, **kargs):
-        return HSwitch.copy(HBox.box(*args, **kargs))
-
-    @staticmethod
-    def line(*args, **kargs):
-        return HSwitch.copy(HBox.line(*args, **kargs))
+    class Domain(ai.HybridZonotope):
+        customRelu = ai.creluSwitch
     
 class ZSwitch(ZBox):
-    def __init__(self, *args, **kargs):
-        super(ZSwitch, self).__init__(*args, **kargs)
 
-    def customRelu(self):
-        return self.creluSwitch()
+    def __str__(self):
+        return "ZSwitch(%s)" % ("" if self.w is None else "w="+str(self.w))
+    class Domain(ai.Zonotope):
+        customRelu = ai.creluSwitch
 
-    @staticmethod
-    def copy(hbox):
-        return ZSwitch(hbox.head, hbox.beta, hbox.errors)
+
+class ZNIPS(ZBox):
+
+    def __str__(self):
+        return "ZSwitch(%s)" % ("" if self.w is None else "w="+str(self.w))
+    class Domain(ai.Zonotope):
+        customRelu = ai.creluNIPS
     
-    @staticmethod
-    def box(*args, **kargs):
-        return ZSwitch.copy(HBox.box(*args, **kargs))
-
-    @staticmethod
-    def line(*args, **kargs):
-        return ZSwitch.copy(HBox.line(*args, **kargs))
-
 class HSmooth(HBox):
-    def __init__(self, *args, **kargs):
-        super(HSmooth, self).__init__(*args, **kargs)
+    def __str__(self):
+        return "HSmooth(%s)" % ("" if self.w is None else "w="+str(self.w))
 
-    def customRelu(self):
-        return self.creluSmooth()
-
-    @staticmethod
-    def copy(hbox):
-        return HSmooth(hbox.head, hbox.beta, hbox.errors)
-    
-    @staticmethod
-    def box(*args, **kargs):
-        return HSmooth.copy(HBox.box(*args, **kargs))
-
-    @staticmethod
-    def line(*args, **kargs):
-        return HSmooth.copy(HBox.line(*args, **kargs))
-
+    class Domain(ai.HybridZonotope):
+        customRelu = ai.creluSmooth
 
     
+class HNIPS(HBox):
+    def __str__(self):
+        return "HSmooth(%s)" % ("" if self.w is None else "w="+str(self.w))
+
+    class Domain(ai.HybridZonotope):
+        customRelu = ai.creluNIPS
+
+
 class ZSmooth(ZBox):
-    def __init__(self, *args, **kargs):
-        super(ZSmooth, self).__init__(*args, **kargs)
+    def __str__(self):
+        return "ZSmooth(%s)" % ("" if self.w is None else "w="+str(self.w))
 
-    def customRelu(self):
-        return self.creluSmooth()
-
-    @staticmethod
-    def copy(hbox):
-        return ZSmooth(hbox.head, hbox.beta, hbox.errors)
-    
-    @staticmethod
-    def box(*args, **kargs):
-        return ZSmooth.copy(HBox.box(*args, **kargs))
-
-    @staticmethod
-    def line(*args, **kargs):
-        return ZSmooth.copy(HBox.line(*args, **kargs))
-
-
-
+    class Domain(ai.Zonotope):
+        customRelu = ai.creluSmooth

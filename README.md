@@ -82,10 +82,14 @@ Not all of the datasets listed in the help message are supported.  Supported dat
 
 Unsupported datasets will not necessarily throw errors.
 
+
+* To reproduce the results from the ICML paper, 
+
 About
 -----
 
-* This repository contains the code used for the experiments in the ICML paper, [Differentiable Abstract Interpretation for Provably Robust Neural Networks](https://files.sri.inf.ethz.ch/website/papers/icml18-diffai.pdf)
+* DiffAI is now on Version 2.0.  
+* This repository contains the code used for the experiments in the 2018 ICML paper, [Differentiable Abstract Interpretation for Provably Robust Neural Networks](https://files.sri.inf.ethz.ch/website/papers/icml18-diffai.pdf).  To reproduce these experiments exactly, one must download the source from download the [source code for Version 1.0](https://github.com/eth-sri/diffai/releases/tag/v1.0)
 * Further information and related projects can be found at [the SafeAI Project](http://safeai.ethz.ch/)
 * [High level slides](https://files.sri.inf.ethz.ch/website/slides/mirman2018differentiable.pdf)
 
