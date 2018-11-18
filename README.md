@@ -1,7 +1,7 @@
 DiffAI v2.0 <img width="100" alt="portfolio_view" align="right" src="http://safeai.ethz.ch/img/sri-logo.svg">
 =============================================================================================================
 
-![High Level](https://raw.githubusercontent.com/eth-sri/diffai/master/media/overview.png)
+![High Level](https://raw.githubusercontent.com/eth-sri/diffai/v2/media/overview.png)
 
 DiffAI is a system for training neural networks to be provably robust and for proving that they are robust.
 
