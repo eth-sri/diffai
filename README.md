@@ -1,4 +1,4 @@
-DiffAI v2.0 <img width="100" alt="portfolio_view" align="right" src="http://safeai.ethz.ch/img/sri-logo.svg">
+DiffAI v2.0 <a href="https://www.sri.inf.ethz.ch/"><img width="100" alt="portfolio_view" align="right" src="http://safeai.ethz.ch/img/sri-logo.svg"></a>
 =============================================================================================================
 
 ![High Level](https://raw.githubusercontent.com/eth-sri/diffai/v2/media/overview.png)
