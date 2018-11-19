@@ -2,6 +2,7 @@
 # Copyright (c) 2018 Secure, Reliable, and Intelligent Systems Lab (SRI), ETH Zurich
 # This software is distributed under the MIT License: https://opensource.org/licenses/MIT
 # SPDX-License-Identifier: MIT
+# Author: Matthew Mirman (matt@mirman.com)
 # For more information see https://github.com/eth-sri/diffai
 
 # THE SOFTWARE IS PROVIDED "AS-IS" WITHOUT ANY WARRANTY OF ANY KIND, EITHER
@@ -14,17 +15,57 @@
 # ANY WAY CONNECTED WITH THIS SOFTWARE (WHETHER OR NOT BASED UPON WARRANTY,
 # CONTRACT, TORT OR OTHERWISE).
 
-import components as n
+try:
+    from . import components as n
+except:
+    import components as n
 
+
+def ffnnSmall(c, **kargs):
+    return n.FFNN([100, 100,c], **kargs)
 
 def ffnn(c, **kargs):
     return n.FFNN([100, 100, 100, 100, 100,c], **kargs)
 
+def ffnnLin(c, **kargs):
+    return n.FFNN([100, 100, 100, 100, 100,c], last_lin = True, **kargs)
+
+def ffnnGGD(c, **kargs):
+    return n.FFNN([500, 500, 500, 500, 500,500, c], last_lin = True, activation="ReLU", **kargs)
+
+def ffnnTANH(c, **kargs):
+    return n.FFNN([500, 500, 500, 500, 500,500,c], last_lin = True, activation="Tanh", **kargs)
+
+def ffnnSIGMOID(c, **kargs):
+    return n.FFNN([500, 500, 500, 500, 500,500, c], last_lin = True, activation="Sigmoid", **kargs)
+
 def convSmall(c, **kargs):
     return n.LeNet([ (16,4,4,2), (32,4,4,2) ], [100,c], last_lin = True, **kargs)
 
+
+def convSmallGGD(c, **kargs):
+    return n.LeNet([ (16,4,4,2), (32,4,4,2) ], [100,c], last_lin = True, **kargs)
+
+def convGGD(c, **kargs):
+    return n.LeNet([ (5,4,4,1), (6,3,3,1) ], [50,c], padding=0, last_lin = True, **kargs)
+
+def convNOPAD(c, **kargs):
+    return n.LeNet([ (5,4,4,1) ], [50,c], padding=0, last_lin = True, **kargs)
+
 def convMed(c, **kargs):
     return n.LeNet([ (16,4,4,2), (32,4,4,2) ], [100,c], padding = 1, last_lin = True, **kargs)
+
+def convMedG(c, **kargs):
+    return n.LeNet([ (16,4,4,2), (32,4,4,2) ], [1000,c], padding = 1, last_lin = True, **kargs)
+
+def convMedGNoPad(c, **kargs):
+    return n.LeNet([ (16,4,4,1), (32,4,4,1) ], [1000,c], padding = 0, last_lin = True, **kargs)
+
+def convMedGSIGMOID(c, **kargs):
+    return n.LeNet([ (16,4,4,2), (32,4,4,2) ], [1000,c], padding = 1, last_lin = True, activation="Sigmoid", **kargs)
+
+def convMedGTANH(c, **kargs):
+    return n.LeNet([ (16,4,4,2), (32,4,4,2) ], [1000,c], padding = 1, last_lin = True, activation="Tanh", **kargs)
 
 def convBig(c, **kargs):
     return n.LeNet([ (32,3,3,1), (32,4,4,2) , (64,3,3,1), (64,4,4,2)], [512, 512,c], padding = 1, last_lin = True, **kargs)
