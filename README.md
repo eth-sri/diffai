@@ -54,10 +54,23 @@ Unless otherwise specified by "--out", the output is logged to the folder "out/"
 In the folder corresponding to the experiment that has been run, one can find the saved configuration options in 
 "config.txt", and a pickled net which is saved every 10 epochs (provided that testing is set to happen every 10th epoch).
 
-To load a saved model, use "--test"
+To load a saved model, use "--test" as per the example:
+
+```
+(pytorch) $ alias test-diffai="python . -d Point --epochs 1 --dont-write --test-freq 1"
+(pytorch) $ test-diffai -t Box --update-test-net-name convBig --test PATHTOSAVED_CONVBIG.pynet --width 0.1 --test-size 500 --test-batch-size 500
+```
+
+Note that "--update-test-net-name" will create a new model based on convBig and try to use the weights in the pickled PATHTOSAVED_CONVBIG.pynet to initialize that models weights.  This is not always necessary, but is useful when the code for a model changes (in components) but does not effect the number or usage of weight, or when loading a model pickled by a cuda process into a cpu process.
+
+The default specification type is the L_infinity Ball specified explicitly by "--spec boxSpec",
+which uses an epsilon specified by "--width"
 
 The default specification type is the L_infinity Ball specified explicitly by "--spec boxSpec", 
 which uses an epsilon specified by "--width"
+
+
+
 
 Training Domain DSL
 -------------------
