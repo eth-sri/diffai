@@ -217,8 +217,6 @@ def variable(Pt):
         def softplus(self): 
             return F.softplus(self)
 
-        def log_softmax(self, *args, dim = 1, **kargs): 
-            return F.log_softmax(self, *args,dim = dim,  **kargs)
         def conv3d(self, *args, **kargs): 
             return F.conv3d(self, *args, **kargs)
         def conv2d(self, *args, **kargs): 
@@ -252,6 +250,12 @@ def variable(Pt):
 
         def cudify(self, cuda_async = True):
             return self.cuda(non_blocking=cuda_async) if use_cuda else self
+
+    def log_softmax(self, *args, dim = 1, **kargs): 
+        return F.log_softmax(self, *args,dim = dim, **kargs)       
+
+    if torch.__version__[0] == "0" and torch.__version__ != "0.4.1":
+        Point.log_softmax = log_softmax
 
     for nm in getMethodNames(Point):
         curse(Pt, nm, getattr(Point, nm))

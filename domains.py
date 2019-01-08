@@ -124,7 +124,7 @@ class Point(object):
         return (original + other) / 2
 
     def loss(self, dom, target, **args):
-        return F.nll_loss(dom.log_softmax(), target, size_average = False, reduce = False)
+        return F.nll_loss(dom.log_softmax(dim=1), target, size_average = False, reduce = False)
 
     def widthLoss(self, dom, **args):
         return 0

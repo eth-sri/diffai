@@ -443,7 +443,7 @@ def mulIfEq(grad,out,target):
     return is_eq
     
 def stdLoss(out, target):
-    return F.nll_loss(out.log_softmax(), target, size_average = False, reduce = False).sum()
+    return F.nll_loss(out.log_softmax(dim=1), target, size_average = False, reduce = False).sum()
 
 class ListDomain(object):
 
