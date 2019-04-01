@@ -1,20 +1,3 @@
-# This source file is part of DiffAI
-# Copyright (c) 2018 Secure, Reliable, and Intelligent Systems Lab (SRI), ETH Zurich
-# This software is distributed under the MIT License: https://opensource.org/licenses/MIT
-# SPDX-License-Identifier: MIT
-# Author: Matthew Mirman (matt@mirman.com)
-# For more information see https://github.com/eth-sri/diffai
-
-# THE SOFTWARE IS PROVIDED "AS-IS" WITHOUT ANY WARRANTY OF ANY KIND, EITHER
-# EXPRESS, IMPLIED OR STATUTORY, INCLUDING BUT NOT LIMITED TO ANY WARRANTY
-# THAT THE SOFTWARE WILL CONFORM TO SPECIFICATIONS OR BE ERROR-FREE AND ANY
-# IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE,
-# TITLE, OR NON-INFRINGEMENT.  IN NO EVENT SHALL ETH ZURICH BE LIABLE FOR ANY     
-#  DAMAGES, INCLUDING BUT NOT LIMITED TO DIRECT, INDIRECT,
-# SPECIAL OR CONSEQUENTIAL DAMAGES, ARISING OUT OF, RESULTING FROM, OR IN
-# ANY WAY CONNECTED WITH THIS SOFTWARE (WHETHER OR NOT BASED UPON WARRANTY,
-# CONTRACT, TORT OR OTHERWISE).
-
 import future
 import builtins
 import past
@@ -45,17 +28,22 @@ import random
 from components import *
 import models
 
-import domains
+import goals
+import scheduling
 
-from domains import *
+from goals import *
+from scheduling import *
+
 import math
 
 import warnings
 from torch.serialization import SourceChangeWarning
 
-POINT_DOMAINS = [m for m in h.getMethods(domains) if m.Domain is h.dtype]
-SYMETRIC_DOMAINS = [domains.Box] + POINT_DOMAINS
+POINT_DOMAINS = [m for m in h.getMethods(goals) if issubclass(m, goals.Point)]
+SYMETRIC_DOMAINS = [goals.Box] + POINT_DOMAINS
 
+
+datasets.Imagenet12 = None
 
 class Top(nn.Module):
     def __init__(self, args, net, ty = Point):
@@ -83,12 +71,12 @@ class Top(nn.Module):
     def clip_norm(self):
         self.net.clip_norm()
 
-    def boxSpec(self, x, target):
-        return [(self.ty.box(x, self.w, model=self, target=target, untargeted=True), target)]
+    def boxSpec(self, x, target, **kargs):
+        return [(self.ty.box(x, w = self.w, model=self, target=target, untargeted=True, **kargs).to_dtype(), target)]
 
-    def curveSpec(self, x, target):
+    def curveSpec(self, x, target, **kargs):
         if self.ty.__class__ in SYMETRIC_DOMAINS:
-            return self.boxSpec(x,target)
+            return self.boxSpec(x,target, **kargs)
         
 
         batch_size = x.size()[0]
@@ -122,7 +110,7 @@ class Top(nn.Module):
         batchedBest = h.chunks(bestSpecs, new_batch_size)
 
         def batch(t,s,b):
-            t = h.ltype(t)
+            t = h.lten(t)
             s = torch.stack(s)
             b = torch.stack(b)
 
@@ -131,22 +119,22 @@ class Top(nn.Module):
                 s.cuda()
                 b.cuda()
 
-            m = self.ty.line(s, b, self.curve_width)
+            m = self.ty.line(s, b, w = self.curve_width, **kargs)
             return (m , t)
 
-        return [ batch(t,s,b) for t,s,b in zip(batchedTargs, batchedSpecs, batchedBest)]
+        return [batch(t,s,b) for t,s,b in zip(batchedTargs, batchedSpecs, batchedBest)]
 
 
     def regLoss(self):
-        if self.regularize is None:
+        if self.regularize is None or self.regularize <= 0.0:
             return 0
         reg_loss = 0
-        for param in self.parameters():
-            reg_loss += param.norm(2)
-        return self.regularize * reg_loss
+        r = self.net.regularize(2)
+        return self.regularize * r
         
     def aiLoss(self, dom, target, **args):
-        return self.regLoss()  +  self.ty.loss(self(dom), target, **args)
+        r = self(dom)
+        return self.regLoss() +  r.loss(target = target, **args)
 
     def printNet(self, f):
         self.net.printNet(f)
@@ -155,30 +143,39 @@ class Top(nn.Module):
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch DiffAI Example',  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--batch-size', type=int, default=10, metavar='N', help='input batch size for training')
+parser.add_argument('--test-first', type=h.str2bool, nargs='?', const=True, default=True, help='test first')
 parser.add_argument('--test-freq', type=int, default=1, metavar='N', help='number of epochs to skip before testing')
 parser.add_argument('--test-batch-size', type=int, default=10, metavar='N', help='input batch size for testing')
 parser.add_argument('--sub-batch-size', type=int, default=3, metavar='N', help='input batch size for curve specs')
 
+parser.add_argument('--custom-schedule', type=str, default="", metavar='net', help='Learning rate scheduling for lr-multistep.  Defaults to [200,250,300] for CIFAR10 and [15,25] for everything else.')
+
 parser.add_argument('--test', type=str, default=None, metavar='net', help='Saved net to use, in addition to any other nets you specify with -n')
-parser.add_argument('--update-test-net',type=h.str2bool, nargs='?', const=True, default=False, help="should update test net")
+parser.add_argument('--update-test-net', type=h.str2bool, nargs='?', const=True, default=False, help="should update test net")
+
+parser.add_argument('--sgd',type=h.str2bool, nargs='?', const=True, default=False, help="use sgd instead of adam")
 parser.add_argument('--onyx', type=h.str2bool, nargs='?', const=True, default=False, help="should output onyx")
+parser.add_argument('--save-dot-net', type=h.str2bool, nargs='?', const=True, default=False, help="should output in .net")
 parser.add_argument('--update-test-net-name', type=str, choices = h.getMethodNames(models), default=None, help="update test net name")
+
+parser.add_argument('--normalize-layer', type=h.str2bool, nargs='?', const=True, default=True, help="should include a training set specific normalization layer")
+parser.add_argument('--clip-norm', type=h.str2bool, nargs='?', const=True, default=False, help="should clip the normal and use normal decomposition for weights")
 
 parser.add_argument('--epochs', type=int, default=1000, metavar='N', help='number of epochs to train')
 parser.add_argument('--log-freq', type=int, default=10, metavar='N', help='The frequency with which log statistics are printed')
-parser.add_argument('--save-freq', type=int, default=1, metavar='N', help='The frequency with which nets and images are saved')
+parser.add_argument('--save-freq', type=int, default=1, metavar='N', help='The frequency with which nets and images are saved, in terms of number of test passes')
 parser.add_argument('--number-save-images', type=int, default=0, metavar='N', help='The number of images to save. Should be smaller than test-size.')
 
 parser.add_argument('--lr', type=float, default=0.001, metavar='LR', help='learning rate')
+parser.add_argument('--lr-multistep', type=h.str2bool, nargs='?', const=True, default=False, help='learning rate multistep scheduling')
+
 parser.add_argument('--threshold', type=float, default=-0.01, metavar='TH', help='threshold for lr schedule')
 parser.add_argument('--patience', type=int, default=0, metavar='PT', help='patience for lr schedule')
 parser.add_argument('--factor', type=float, default=0.5, metavar='R', help='reduction multiplier for lr schedule')
 parser.add_argument('--max-norm', type=float, default=10000, metavar='MN', help='the maximum norm allowed in weight distribution')
 
-parser.add_argument('--curve-width', type=float, default=None, metavar='CW', help='the width of the curve spec')
 
-parser.add_argument('--width-weight', type=float, default=0, metavar='CW', help='the weight of width in a combined loss')
-parser.add_argument('--tot-weight', type=float, default=1, metavar='TW', help='the weight of domain total in a combined loss')
+parser.add_argument('--curve-width', type=float, default=None, metavar='CW', help='the width of the curve spec')
 
 parser.add_argument('--width', type=float, default=0.01, metavar='CW', help='the width of either the line or box')
 parser.add_argument('--spec', choices = [ x for x in dir(Top) if x[-4:] == "Spec" and len(getargspec(getattr(Top, x)).args) == 3]
@@ -191,10 +188,10 @@ parser.add_argument("--use-schedule", type=h.str2bool, nargs='?',
                     help="activate learning rate schedule")
 
 parser.add_argument('-d', '--domain', sub_choices = None, action = h.SubAct
-                    , default=[], help='picks which abstract domains to use for training', required=True)
+                    , default=[], help='picks which abstract goals to use for training', required=True)
 
 parser.add_argument('-t', '--test-domain', sub_choices = None, action = h.SubAct
-                    , default=[], help='picks which abstract domains to use for testing.  Examples include ' + str(domains), required=True)
+                    , default=[], help='picks which abstract goals to use for testing.  Examples include ' + str(goals), required=True)
 
 parser.add_argument('-n', '--net', choices = h.getMethodNames(models), action = 'append'
                     , default=[], help='picks which net to use for training')  # one net for now
@@ -202,8 +199,9 @@ parser.add_argument('-n', '--net', choices = h.getMethodNames(models), action = 
 parser.add_argument('-D', '--dataset', choices = [n for (n,k) in inspect.getmembers(datasets, inspect.isclass) if issubclass(k, Dataset)]
                     , default="MNIST", help='picks which dataset to use.')
 
-parser.add_argument('-o', '--out', default="out/", help='picks which net to use for training')
+parser.add_argument('-o', '--out', default="out", help='picks which net to use for training')
 parser.add_argument('--dont-write', type=h.str2bool, nargs='?', const=True, default=False, help='dont write anywhere if this flag is on')
+parser.add_argument('--write-first', type=h.str2bool, nargs='?', const=True, default=False, help='write the initial net.  Useful for comparing algorithms, a pain for testing.')
 parser.add_argument('--test-size', type=int, default=2000, help='number of examples to test with')
 
 parser.add_argument('-r', '--regularize', type=float, default=None, help='use regularization')
@@ -234,31 +232,54 @@ print("Num classes: ", num_classes)
 
 vargs = vars(args)
 
+total_batches_seen = 0
+
 def train(epoch, models):
+    global total_batches_seen
+
     for model in models:
         model.train()
 
-    ep_tot = 0
     for batch_idx, (data, target) in enumerate(train_loader):
+        total_batches_seen += 1
+        time = float(total_batches_seen) / len(train_loader)
         if h.use_cuda:
             data, target = data.cuda(), target.cuda()
 
         for model in models:
             model.global_num += data.size()[0]
 
-            timer = Timer("train", "sample from " + model.name + " with " + model.ty.name, data.size()[0], False)
+            timer = Timer("train a sample from " + model.name + " with " + model.ty.name, data.size()[0], False)
             lossy = 0
             with timer:
-                for s in model.getSpec(data,target):
+                for s in model.getSpec(data.to_dtype(),target, time = time):
                     model.optimizer.zero_grad()
-
-                    loss = model.aiLoss(*s, **vargs).sum() / data.size()[0]
-                    lossy += loss.item()
+                    loss = model.aiLoss(*s, time = time, **vargs).mean(dim=0)
+                    lossy += loss.detach().item()
                     loss.backward()
                     torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
+                    for p in model.parameters():
+                        if p is not None and torch.isnan(p).any():
+                            print("Such nan in vals")
+                        if p is not None and p.grad is not None and torch.isnan(p.grad).any():
+                            print("Such nan in postmagic")
+                            stdv = 1 / math.sqrt(h.product(p.data.shape))
+                            p.grad = torch.where(torch.isnan(p.grad), torch.normal(mean=h.zeros(p.grad.shape), std=stdv), p.grad) 
+
                     model.optimizer.step()
-                    model.clip_norm()
-            
+
+                    for p in model.parameters():
+                        if p is not None and torch.isnan(p).any():
+                            print("Such nan in vals after grad")
+                            stdv = 1 / math.sqrt(h.product(p.data.shape))
+                            p.data = torch.where(torch.isnan(p.data), torch.normal(mean=h.zeros(p.data.shape), std=stdv), p.data) 
+                    
+                    if args.clip_norm:
+                        model.clip_norm()
+                    for p in model.parameters():
+                        if p is not None and torch.isnan(p).any():
+                            raise Exception("Such nan in vals after clip")
+                    
             model.addSpeed(timer.getUnitTime())
 
             if batch_idx % args.log_interval == 0:
@@ -284,11 +305,11 @@ def test(models, epoch, f = None):
                     self.domain = d
                     self.name = dnm
                     self.width = 0
-                    self.max_eps = 0
+                    self.max_eps = None
                     self.safe = 0
                     self.proved = 0
                     self.time = 0
-            self.domains = [ Stat(h.parseValues(domains,d), h.catStrs(d)) for d in args.test_domain ]
+            self.domains = [ Stat(h.parseValues(d, goals), h.catStrs(d)) for d in args.test_domain ]
     model_stats = [ MStat(m) for m in models ]
         
     num_its = 0
@@ -302,26 +323,26 @@ def test(models, epoch, f = None):
         
         num_its += data.size()[0]
         if h.use_cuda:
-            data, target = data.cuda(), target.cuda()
+            data, target = data.cuda().to_dtype(), target.cuda()
 
         for m in model_stats:
 
             with torch.no_grad():
-                pred = m.model(data).data.max(1, keepdim=True)[1] # get the index of the max log-probability
+                pred = m.model(data).vanillaTensorPart().max(1, keepdim=True)[1] # get the index of the max log-probability
                 m.correct += pred.eq(target.data.view_as(pred)).sum()
 
             for stat in m.domains:
                 timer = Timer(shouldPrint = False)
                 with timer:
                     def calcData(data, target):
-                        box = stat.domain.box(data, m.model.w, model=m.model, untargeted = True, target=target)
+                        box = stat.domain.box(data, w = m.model.w, model=m.model, untargeted = True, target=target).to_dtype()
                         with torch.no_grad():
                             bs = m.model(box)
-                            org = m.model(data).max(1,keepdim=True)[1]
+                            org = m.model(data).vanillaTensorPart().max(1,keepdim=True)[1]
                             stat.width += bs.diameter().sum().item() # sum up batch loss
                             stat.proved += bs.isSafe(org).sum().item()
                             stat.safe += bs.isSafe(target).sum().item()
-                            stat.max_eps += 0 # TODO: calculate max_eps
+                            # stat.max_eps += 0 # TODO: calculate max_eps
 
                     if m.model.net.neuronCount() < 5000 or stat.domain in SYMETRIC_DOMAINS:
                         calcData(data, target)
@@ -332,6 +353,8 @@ def test(models, epoch, f = None):
                 
     l = num_its # len(test_loader.dataset)
     for m in model_stats:
+        if args.lr_multistep:
+            m.model.lrschedule.step()
 
         pr_corr = float(m.correct) / float(l)
         if args.use_schedule:
@@ -347,25 +370,26 @@ def test(models, epoch, f = None):
             pr_safe = stat.safe / l
             pr_proved = stat.proved / l
             pr_corr_given_proved = pr_safe / pr_proved if pr_proved > 0 else 0.0
-            h.printBoth(("\t{:" + str(largest_test_domain)+"} - Width: {:<36.16f} Pr[Proved]={:<1.3f}  Pr[Corr and Proved]={:<1.3f}  Pr[Corr|Proved]={:<1.3f} AvgMaxEps: {:1.10f} Time = {:<7.5f}").format(
+            h.printBoth(("\t{:" + str(largest_test_domain)+"} - Width: {:<36.16f} Pr[Proved]={:<1.3f}  Pr[Corr and Proved]={:<1.3f}  Pr[Corr|Proved]={:<1.3f} {}Time = {:<7.5f}" ).format(
                 stat.name, 
                 stat.width / l, 
                 pr_proved, 
                 pr_safe, pr_corr_given_proved, 
-                stat.max_eps / l,
+                "AvgMaxEps: {:1.10f} ".format(stat.max_eps / l) if stat.max_eps is not None else "",
                 stat.time), f = f)
             model_stat_rec += "{}_{:1.3f}_{:1.3f}_{:1.3f}__".format(stat.name, pr_proved, pr_safe, pr_corr_given_proved)
         prepedname = m.model.ty.name.replace(" ", "_").replace(",", "").replace("(", "_").replace(")", "_").replace("=", "_")
         net_file = os.path.join(out_dir, m.model.name +"__" +prepedname + "_checkpoint_"+str(epoch)+"_with_{:1.3f}".format(pr_corr))
 
-        h.printBoth("\tSaving netfile: {}\n".format(net_file + ".net"), f = f)
+        h.printBoth("\tSaving netfile: {}\n".format(net_file + ".pynet"), f = f)
 
-        if num_tests % args.save_freq == 1 or args.save_freq == 1 and not args.dont_write:
+        if (num_tests % args.save_freq == 1 or args.save_freq == 1) and not args.dont_write and (num_tests > 1 or args.write_first):
+            print("Actually Saving")
             torch.save(m.model.net, net_file + ".pynet")
-            
-            with h.mopen(args.dont_write, net_file + ".net", "w") as f2:
-                m.model.net.printNet(f2)
-                f2.close()
+            if args.save_dot_net:
+                with h.mopen(args.dont_write, net_file + ".net", "w") as f2:
+                    m.model.net.printNet(f2)
+                    f2.close()
             if args.onyx:
                 nn = copy.deepcopy(m.model.net)
                 nn.remove_norm()
@@ -398,22 +422,35 @@ def createModel(net, domain, domain_name):
     domain.name = domain_name
 
     net = net_create()
-    net.load_state_dict(net_weights.state_dict())
+    m = {}
+    for (k,v) in net_weights.state_dict().items():
+        m[k] = v.to_dtype()
+    net.load_state_dict(m)
 
     model = Top(args, net, domain)
-    model.clip_norm()
+    if args.clip_norm:
+        model.clip_norm()
     if h.use_cuda:
         model.cuda()
+    if args.sgd:
+        model.optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
+    else:
+        model.optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
-    model.optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    model.lrschedule = optim.lr_scheduler.ReduceLROnPlateau(
-        model.optimizer,
-        'min',
-        patience=args.patience,
-        threshold= args.threshold,
-        min_lr=0.000001,
-        factor=args.factor,
-        verbose=True)
+    if args.lr_multistep:
+        model.lrschedule = optim.lr_scheduler.MultiStepLR(
+            model.optimizer,
+            gamma = 0.1,
+            milestones = eval(args.custom_schedule) if args.custom_schedule != "" else ([200, 250, 300] if args.dataset == "CIFAR10" else [15, 25]))
+    else:
+        model.lrschedule = optim.lr_scheduler.ReduceLROnPlateau(
+            model.optimizer,
+            'min',
+            patience=args.patience,
+            threshold= args.threshold,
+            min_lr=0.000001,
+            factor=args.factor,
+            verbose=True)
 
     net.name = net_create.__name__
     model.name = net_create.__name__
@@ -421,7 +458,7 @@ def createModel(net, domain, domain_name):
     return model
 
 out_dir = os.path.join(args.out, args.dataset, str(args.net)[1:-1].replace(", ","_").replace("'",""),
-                       args.spec, "width_"+str(args.width), str(datetime.now()).replace(":","").replace(" ", "") )
+                       args.spec, "width_"+str(args.width), h.file_timestamp() )
 
 print("Saving to:", out_dir)
 
@@ -436,15 +473,18 @@ print("")
 
 def buildNet(n):
     n = n(num_classes)
-    if args.dataset in ["MNIST"]:
-        n = Seq(Normalize([0.1307], [0.3081] ), n)
-    elif args.dataset in ["CIFAR10", "CIFAR100"]:
-        n = Seq(Normalize([0.4914, 0.4822, 0.4465], [0.2023, 0.1994, 0.2010]), n)
-    elif dataset in ["SVHN"]:
-        n = Seq(Normalize([0.5,0.5,0.5], [0.2, 0.2, 0.2]), n)
-
+    if args.normalize_layer:
+        if args.dataset in ["MNIST"]:
+            n = Seq(Normalize([0.1307], [0.3081] ), n)
+        elif args.dataset in ["CIFAR10", "CIFAR100"]:
+            n = Seq(Normalize([0.4914, 0.4822, 0.4465], [0.2023, 0.1994, 0.2010]), n)
+        elif args.dataset in ["SVHN"]:
+            n = Seq(Normalize([0.5,0.5,0.5], [0.2, 0.2, 0.2]), n)
+        elif args.dataset in ["Imagenet12"]:
+            n = Seq(Normalize([0.485, 0.456, 0.406],[0.229, 0.224, 0.225]), n)
     n = n.infer(input_dims)
-    n.clip_norm()
+    if args.clip_norm:
+        n.clip_norm()
     return n
 
 if not args.test is None:
@@ -455,14 +495,17 @@ if not args.test is None:
         if test_name is not None:
             n = getattr(models,test_name)
             n = buildNet(n)
-            n.clip_norm()
+            if args.clip_norm:
+                n.clip_norm()
             return n
         else:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", SourceChangeWarning)
                 return torch.load(args.test)
 
-    net = loadedNet()
+    net = loadedNet().double() if h.dtype == torch.float64 else loadedNet().float()
+    
+
     if args.update_test_net_name is not None:
         test_name = args.update_test_net_name
     elif args.update_test_net and '__name__' in dir(net):
@@ -489,23 +532,30 @@ for n in args.net:
     print("Name: ", net_create.__name__)
     print("Number of Neurons (relus): ", net.neuronCount())
     print("Number of Parameters: ", sum([h.product(s.size()) for s in net.parameters()]))
+    print("Depth (relu layers): ", net.depth())
+    print()
+    net.showNet()
     print()
 
 
 if args.domain == []:
-    models = [ createModel(net, domains.Box(args.width), "Box") for net in nets]
+    models = [ createModel(net, goals.Box(args.width), "Box") for net in nets]
 else:
-    models = h.flat([[createModel(net, h.parseValues(domains,d), h.catStrs(d)) for net in nets] for d in args.domain])
+    models = h.flat([[createModel(net, h.parseValues(d, goals, scheduling), h.catStrs(d)) for net in nets] for d in args.domain])
 
 
 with h.mopen(args.dont_write, os.path.join(out_dir, "log.txt"), "w") as f:
     startTime = timer()
     for epoch in range(1, args.epochs + 1):
-        if (epoch - 1) % args.test_freq == 0:
-            with Timer("test before epoch "+str(epoch),"sample", 10000):
+        if f is not None:
+            f.flush()
+        if (epoch - 1) % args.test_freq == 0 and (epoch > 1 or args.test_first):
+            with Timer("test all models before epoch "+str(epoch), 1):
                 test(models, epoch, f)
+                if f is not None:
+                    f.flush()
         h.printBoth("Elapsed-Time: {:.2f}s\n".format(timer() - startTime), f = f)
         if args.epochs <= args.test_freq:
             break
-        with Timer("train","sample", 60000):
+        with Timer("train all models in epoch", 1, f = f):
             train(epoch, models)
