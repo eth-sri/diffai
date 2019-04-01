@@ -82,7 +82,7 @@ which uses an epsilon specified by "--width"
 Abstract Networks
 -----------------
 
-![High Level](https://raw.githubusercontent.com/eth-sri/diffai/master/media/resnetTinyFewCombo.pdf)
+![Example Abstract Net](https://raw.githubusercontent.com/eth-sri/diffai/master/media/resnetTinyFewCombo.png)
 
 A cruical point of DiffAI v3 is that how a network is trained and abstracted should be part of the network description itself.   In this release, we provide layers that allow one to alter how the abstraction works, 
 in addition to providing a script for converting an abstract network to onyx so that the abstract analysis might be run in tensorflow.
