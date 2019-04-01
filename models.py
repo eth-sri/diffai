@@ -75,16 +75,17 @@ def ResNetTiny_ManyFixed(c, **kargs): # resnetWide also used by mixtrain and sca
 def SkipNet18(c, **kargs):
     return n.Seq(n.ResNet([2,2,2,2], bias = True, ibp_init = True, skip_net = True), n.FFNN([512, 512, c], bias=True, last_lin=True, last_zono = True, ibp_init = True, **kargs))
 
-def ResNet18(c, **kargs):
-    return n.Seq(n.ResNet([2,2,2,2], bias = True, ibp_init = True), n.FFNN([512, 512, c], bias=True, last_lin=True, last_zono = True, ibp_init = True, **kargs))
-
-def ResNet18_Combo(c, **kargs):
+def SkipNet18_Combo(c, **kargs):
     dl = n.DeepLoss
     cmk = n.CorrFix
     dec = lambda x: n.DecorrMin(x, num_to_keep = True)
     return n.Seq(n.ResNet([2,2,2,2], extra = [ (cmk(20),2),(dec(10),2)
                                               ,(cmk(10),3),(dec(5),3),(dl(S.Until(90, S.Lin(0, 0.2, 50, 40), 0)), 3)
-                                              ,(cmk(5),4),(dec(2),4)], bias = True, ibp_init=True), n.FFNN([512, 512, c], bias=True, last_lin=True, last_zono = True, ibp_init=True, **kargs))
+                                              ,(cmk(5),4),(dec(2),4)], bias = True, ibp_init=True, skip_net = True), n.FFNN([512, 512, c], bias=True, last_lin=True, last_zono = True, ibp_init=True, **kargs))
+
+def ResNet18(c, **kargs):
+    return n.Seq(n.ResNet([2,2,2,2], bias = True, ibp_init = True), n.FFNN([512, 512, c], bias=True, last_lin=True, last_zono = True, ibp_init = True, **kargs))
+
 
 def ResNetLarge_LargeCombo(c, **kargs): # resnetWide also used by mixtrain and scaling provable adversarial defenses
     def wb(c, bias = True, **kargs):

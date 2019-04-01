@@ -155,7 +155,7 @@ Contents
 * convert.py: A utility for converting a model with a training or testing domain (goal) into an onyx network.  This is useful for exporting DiffAI abstractions to tensorflow. 
 * \_\_main\_\_.py: The entry point to run the experiments.
 * helpers.py: Assorted helper functions.  Does some monkeypatching, so you might want to be careful importing our library into your project.
-* AllExperimentsSerial.sh: A script which runs all the training experiments from the 2019 ArXiv paper in order.
+* AllExperimentsSerial.sh: A script which runs the training experiments from the 2019 ArXiv paper from table 4 and 5 and figure 5.
 
 Notes
 -----
