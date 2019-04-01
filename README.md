@@ -203,7 +203,7 @@ About
 -----
 
 * DiffAI is now on version 3.0.  
-* This repository contains the code used for the experiments in the [2019 ArXiV Paper](TODO: link).
+* This repository contains the code used for the experiments in the [2019 ArXiV Paper](https://arxiv.org/abs/1903.12519).
 * To reproduce the experiments from the 2018 ICML paper [Differentiable Abstract Interpretation for Provably Robust Neural Networks](https://files.sri.inf.ethz.ch/website/papers/icml18-diffai.pdf), one must download the source from download the [source code for Version 1.0](https://github.com/eth-sri/diffai/releases/tag/v1.0)
 * Further information and related projects can be found at [the SafeAI Project](http://safeai.ethz.ch/)
 * [High level slides](https://files.sri.inf.ethz.ch/website/slides/mirman2018differentiable.pdf)
