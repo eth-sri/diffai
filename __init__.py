@@ -1,8 +1,3 @@
-# Copyright (c) 2018 Secure, Reliable, and Intelligent Systems Lab (SRI), ETH Zurich
-# MIT License - https://opensource.org/licenses/MIT
-# SPDX-License-Identifier: MIT
-# Author: Matthew Mirman (matt@mirman.com)
-
 import sys
 import os
 
