@@ -1,4 +1,4 @@
-DiffAI v2.0 <a href="https://www.sri.inf.ethz.ch/"><img width="100" alt="portfolio_view" align="right" src="http://safeai.ethz.ch/img/sri-logo.svg"></a>
+DiffAI v3.0 <a href="https://www.sri.inf.ethz.ch/"><img width="100" alt="portfolio_view" align="right" src="http://safeai.ethz.ch/img/sri-logo.svg"></a>
 =============================================================================================================
 
 ![High Level](https://raw.githubusercontent.com/eth-sri/diffai/v2/media/overview.png)
@@ -20,7 +20,7 @@ and a loss function is crafted so that low values correspond to inputs which can
 Requirements 
 ------------
 
-python 3.5 or higher, pip3, and virtualenv
+python 3.6.7, and virtualenv, torch 0.4.1.
 
 Recommended Setup 
 -----------------
@@ -28,7 +28,7 @@ Recommended Setup
 ```
 $ git clone https://github.com/eth-sri/DiffAI.git
 $ cd DiffAI
-$ virtualenv pytorch --python python3.6 # or whatever version you are using
+$ virtualenv pytorch --python python3.6
 $ source pytorch/bin/activate
 (pytorch) $ pip install -r requirements.txt
 ```
@@ -100,11 +100,13 @@ Contents
 --------
 
 * components.py: A high level neural network library for composable layers and operations
-* domains.py: abstract domains and attacks which can be used as a drop in replacement for pytorch tensors in any model built with components from components.py
-* losses.py: high level loss functions for training which can take advantage of abstract domains.
+* goals.py: The DSL for specifying training losses and domains, and attacks which can be used as a drop in replacement for pytorch tensors in any model built with components from components.py
+* scheduling.py: The DSL for specifying parameter scheduling.
 * models.py: A repository of models to train with which are used in the paper.
+* convert.py: A utility for converting a model with a training or testing domain (goal) into an onyx network.  This is useful for exporting DiffAI abstractions to tensorflow. 
 * \_\_main\_\_.py: The entry point to run the experiments.
 * helpers.py: Assorted helper functions.  Does some monkeypatching, so you might want to be careful importing our library into your project.
+* AllExperimentsSerial.sh: A script which runs all the training experiments from the 2019 ArXiv paper in order.
 
 Notes
 -----
@@ -119,11 +121,41 @@ Not all of the datasets listed in the help message are supported.  Supported dat
 
 Unsupported datasets will not necessarily throw errors.
 
+Reproducing Results
+-------------------
+
+All training runs from the paper can be reproduced as by the following command, in the same order as Table 6 in the appendix.
+
+```
+./AllExperimentsSerial.sh "-t 'MI_FGSM(k=20,r=2)' -t HBox --test-size 10000 --test-batch-size 200 --test-freq 50 --save-freq 1"
+```
+
+The training schemes can be written as follows (these differ slightly from the presentation in the paper):
+
+* Baseline: Mix(a=Point(), b=Box(w=Lin(0,0.031373,150,10)), bw=IBPConst(Lin(0,0.5,150,10)))
+* InSamp: Mix(a=Point(), b=InSamp(Lin(0,1,150,10)), bw=IBPConst(Lin(0,0.5, 150,10)))
+* InSampLPA: Mix(a=Point(), b=InSamp(Lin(0,1,150,20), w=Lin(0,0.031373, 150, 20)), bw=IBPConst(Lin(0,0.5, 150, 20)))
+* Adv_{1}ISLPA: Mix(a=IFGSM(w=Lin(0,0.031373,20,20), k=1), b=InSamp(Lin(0,1,150,10), w=Lin(0,0.031373,150,10)), bw=IBPConst(Lin(0,0.5,150,10)))
+* Adv_{3}ISLPA: Mix(a=IFGSM(w=Lin(0,0.031373,20,20), k=3), b=InSamp(Lin(0,1,150,10), w=Lin(0,0.031373,150,10)), bw=IBPConst(Lin(0,0.5,150,10)))
+* Baseline_{18}: Mix(a=Point(), b=InSamp(Lin(0,1,200,40)), bw=IBPConst(Lin(0,0.5,200,40)))
+* InSamp_{18}: Mix(a=IFGSM(w=Lin(0,0.031373,20,20)), b=InSamp(Lin(0,1,200,40)), bw=IBPConst(Lin(0,0.5,200,40)))
+* Adv_{5}IS_{18}: Mix(b=InSamp(Lin(0,1,200,40)), bw=IBPConst(Lin(0,0.5, 200, 40)))
+* BiAdv_L: Mix(a=IFGSM(k=2), b=BiAdv(a=IFGSM(k=3, w=Lin(0,0.031373, 150, 30)), b=Box()), bw=IBPConst(Lin(0,0.6, 200, 30)))
+
+To test a saved network as in the paper, use the following command:  
+
+```
+python . -D CIFAR10 -n ResNetLarge_LargeCombo -d Point --width 0.031373 --normalize-layer True --clip-norm False -t 'MI_FGSM(k=20,r=2)' -t HBox --test-size 10000 --test-batch-size 200 --epochs 1 --test NAMEOFSAVEDNET.pynet 
+```
+
+[Saved checkpoints corresponding to those described in the paper are available from this anonymous dropbox folder](https://www.dropbox.com/sh/66obogmvih79e3k/AACe-tkKGvIK0Z--2tk2alZaa?dl=0)
+
 About
 -----
 
-* DiffAI is now on Version 2.0.  
-* This repository contains the code used for the experiments in the 2018 ICML paper, [Differentiable Abstract Interpretation for Provably Robust Neural Networks](https://files.sri.inf.ethz.ch/website/papers/icml18-diffai.pdf).  To reproduce these experiments exactly, one must download the source from download the [source code for Version 1.0](https://github.com/eth-sri/diffai/releases/tag/v1.0)
+* DiffAI is now on Version 3.0.  
+* This repository contains the code used for the experiments in the [2019 ArXiV Paper](TODO: link).
+* To reproduce the experiments from the 2018 ICML paper [Differentiable Abstract Interpretation for Provably Robust Neural Networks](https://files.sri.inf.ethz.ch/website/papers/icml18-diffai.pdf), one must download the source from download the [source code for Version 1.0](https://github.com/eth-sri/diffai/releases/tag/v1.0)
 * Further information and related projects can be found at [the SafeAI Project](http://safeai.ethz.ch/)
 * [High level slides](https://files.sri.inf.ethz.ch/website/slides/mirman2018differentiable.pdf)
 
@@ -144,9 +176,9 @@ Contributors
 ------------
 
 * [Matthew Mirman](https://www.mirman.com) - matt@mirman.com
+* [Gagandeep Singh](https://www.sri.inf.ethz.ch/people/gagandeep) - gsingh@inf.ethz.ch
 * [Timon Gehr](https://www.sri.inf.ethz.ch/tg.php) - timon.gehr@inf.ethz.ch
 * Marc Fischer - marcfisc@student.ethz.ch
-* [Gagandeep Singh](https://www.sri.inf.ethz.ch/people/gagandeep) - gsingh@inf.ethz.ch
 * [Martin Vechev](https://www.sri.inf.ethz.ch/vechev.php) - martin.vechev@inf.ethz.ch
 
 License and Copyright
