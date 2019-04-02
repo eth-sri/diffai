@@ -183,6 +183,8 @@ Unsupported datasets will not necessarily throw errors.
 Reproducing Results
 -------------------
 
+[Download Defended Networks](https://www.dropbox.com/sh/66obogmvih79e3k/AACe-tkKGvIK0Z--2tk2alZaa?dl=0)
+
 All training runs from the paper can be reproduced as by the following command, in the same order as Table 6 in the appendix.
 
 ```
@@ -206,8 +208,6 @@ To test a saved network as in the paper, use the following command:
 ```
 python . -D CIFAR10 -n ResNetLarge_LargeCombo -d Point --width 0.031373 --normalize-layer True --clip-norm False -t 'MI_FGSM(k=20,r=2)' -t HBox --test-size 10000 --test-batch-size 200 --epochs 1 --test NAMEOFSAVEDNET.pynet 
 ```
-
-[To Download Saved Checkpoints](https://www.dropbox.com/sh/66obogmvih79e3k/AACe-tkKGvIK0Z--2tk2alZaa?dl=0)
 
 About
 -----
