@@ -207,7 +207,7 @@ To test a saved network as in the paper, use the following command:
 python . -D CIFAR10 -n ResNetLarge_LargeCombo -d Point --width 0.031373 --normalize-layer True --clip-norm False -t 'MI_FGSM(k=20,r=2)' -t HBox --test-size 10000 --test-batch-size 200 --epochs 1 --test NAMEOFSAVEDNET.pynet 
 ```
 
-[Saved checkpoints corresponding to those described in the paper are available from this anonymous dropbox folder](https://www.dropbox.com/sh/66obogmvih79e3k/AACe-tkKGvIK0Z--2tk2alZaa?dl=0)
+[To Download Saved Checkpoints](https://www.dropbox.com/sh/66obogmvih79e3k/AACe-tkKGvIK0Z--2tk2alZaa?dl=0)
 
 About
 -----
