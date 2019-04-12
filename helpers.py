@@ -233,8 +233,6 @@ def variable(Pt):
         def softplus(self): 
             return F.softplus(self)
 
-<<<<<<< HEAD
-=======
         def elu(self): 
             return F.elu(self)
 
@@ -243,8 +241,7 @@ def variable(Pt):
 
         def sigm(self): 
             return F.sigmoid(self)
-
->>>>>>> v3
+        
         def conv3d(self, *args, **kargs): 
             return F.conv3d(self, *args, **kargs)
         def conv2d(self, *args, **kargs): 
