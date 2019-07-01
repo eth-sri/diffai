@@ -608,9 +608,6 @@ class HybridZonotope:
             return new_hybrid.correlateMaxK(self.errors.shape[0])
         return new_hybrid
 
-    def max_pool2d(self, *args, **kargs):
-        return self.applyMonotone(F.max_pool2d)
-
     def avg_pool2d(self, *args, **kargs):
         nhead = F.avg_pool2d(self.head, *args, **kargs)
         return self.new(nhead, 
