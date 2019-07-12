@@ -27,6 +27,10 @@ def ConvLargeIBP(c, **kargs):
 def ResNetWong(c, **kargs):
     return n.Seq(n.Conv(16, 3, padding=1, bias=False), n.WideBlock(16), n.WideBlock(16), n.WideBlock(32, True), n.WideBlock(64, True), n.FFNN([1000, c], ibp_init = True, bias=True, last_lin=True, last_zono = True, **kargs))
 
+def TruncatedVGG(c, **kargs):
+    return n.LeNet([ (64, 3, 3, 1), (64,3,3,1), (128,3,3,2), (128,3,3,1)], [512,c], padding=1, ibp_init = True, bias = True, last_lin = True, last_zono = True, **kargs)
+
+
 ############# New Models
 
 def ResNetTiny(c, **kargs): # resnetWide also used by mixtrain and scaling provable adversarial defenses
