@@ -180,6 +180,94 @@ Not all of the datasets listed in the help message are supported.  Supported dat
 
 Unsupported datasets will not necessarily throw errors.
 
+Results on Standard Networks
+----------------------------
+
+[Download all defended networks, logs, and configs](https://www.dropbox.com/sh/66obogmvih79e3k/AACe-tkKGvIK0Z--2tk2alZaa?dl=0)
+
+### MNIST
+
+| Network     | Number of Neurons | Number of Parameters | Number ReLU Layers |
+|-------------|----------------------|-------------------|--------------------|
+| [FFNN](https://github.com/eth-sri/diffai/blob/905e1fd854a353a02f5941a3f3a292b19baa207e/models.py#L12) | 500 | 119910 | 5 | 
+| [ConvSmall](https://github.com/eth-sri/diffai/blob/905e1fd854a353a02f5941a3f3a292b19baa207e/models.py#L15) | 3604 | 89606 | 3 | 
+| [ConvMed](https://github.com/eth-sri/diffai/blob/905e1fd854a353a02f5941a3f3a292b19baa207e/models.py#L18) | 4804 | 166406 | 3 | 
+| [ConvBig](https://github.com/eth-sri/diffai/blob/905e1fd854a353a02f5941a3f3a292b19baa207e/models.py#L21) | 48064 | 1974762 | 6 | 
+| [ConvLargeIBP](https://github.com/eth-sri/diffai/blob/905e1fd854a353a02f5941a3f3a292b19baa207e/models.py#L21) | 175816 | 5426402 | 6 | 
+| [TruncatedVGG](https://github.com/eth-sri/diffai/blob/905e1fd854a353a02f5941a3f3a292b19baa207e/models.py#L21) | 151040 | 13109706 | 5 | 
+
+
+
+#### 0.1
+
+[Config](https://www.dropbox.com/sh/66obogmvih79e3k/AADDLbXXwH02ywH-QaI6USS7a/basic_nets/MNIST/width_0.1/config.txt?dl=0)
+[Log](https://www.dropbox.com/sh/66obogmvih79e3k/AADHCYaCWfaltiJuK060DPh8a/basic_nets/MNIST/width_0.1/log.txt?dl=0)
+
+| Network     | Standard Accuracy | MI_FGSM Accuracy | HBox Provability |
+|-------------|-------------------|------------------|------------------|
+| [FFNN](https://www.dropbox.com/sh/66obogmvih79e3k/AADHNSXnFK4QB0IR-KwZnAsja/basic_nets/MNIST/width_0.1/FFNN__LinMix_a_IFGSM_w_Lin_00.210020__k_3__b_InSamp_Lin_0115050__w_Lin_00.215050___bw_Lin_00.515050___checkpoint_201_with_0.939.pynet?dl=0) | 93.3% | 90.8% | 88.9% |
+| [ConvSmall](https://www.dropbox.com/sh/66obogmvih79e3k/AAAfNh-0wwYJ7MqvgXqgtHd0a/basic_nets/MNIST/width_0.1/ConvSmall__LinMix_a_IFGSM_w_Lin_00.210020__k_3__b_InSamp_Lin_0115050__w_Lin_00.215050___bw_Lin_00.515050___checkpoint_301_with_0.978.pynet?dl=0) | 97.8% | 96.2% | 95.5% |
+| [ConvMed](https://www.dropbox.com/sh/66obogmvih79e3k/AAC7tclxa1j8GWaUDDhCGaaZa/basic_nets/MNIST/width_0.1/ConvMed__LinMix_a_IFGSM_w_Lin_00.210020__k_3__b_InSamp_Lin_0115050__w_Lin_00.215050___bw_Lin_00.515050___checkpoint_301_with_0.978.pynet?dl=0) | 97.8% | 96.3% | 95.5% |
+| [ConvBig](https://www.dropbox.com/sh/66obogmvih79e3k/AACTrwKNr31eoKCq2JDhmJt9a/basic_nets/MNIST/width_0.1/ConvBig__LinMix_a_IFGSM_w_Lin_00.210020__k_3__b_InSamp_Lin_0115050__w_Lin_00.215050___bw_Lin_00.515050___checkpoint_201_with_0.985.pynet?dl=0) | 98.5% | 97.2% | 95.6% |
+| [ConvLargeIBP](https://www.dropbox.com/sh/66obogmvih79e3k/AABX2duJZqBjrKilYyO8470Ba/basic_nets/MNIST/width_0.1/ConvLargeIBP__LinMix_a_IFGSM_w_Lin_00.210020__k_3__b_InSamp_Lin_0115050__w_Lin_00.215050___bw_Lin_00.515050___checkpoint_201_with_0.987.pynet?dl=0) | 98.7% | 97.5% | 95.8% |
+| [TruncatedVGG](https://www.dropbox.com/sh/66obogmvih79e3k/AADQB-i7clGLfrYtsJTiPyhna/basic_nets/MNIST/width_0.1/TruncatedVGG__LinMix_a_IFGSM_w_Lin_00.210020__k_3__b_InSamp_Lin_0115050__w_Lin_00.215050___bw_Lin_00.515050___checkpoint_201_with_0.989.pynet?dl=0) | 98.9% | 97.7% | 95.6% |
+
+#### 0.3
+
+[Config](https://www.dropbox.com/sh/66obogmvih79e3k/AABczzTY9F8ioggQDcn10CI6a/basic_nets/MNIST/width_0.3/config.txt?dl=0)
+[Log](https://www.dropbox.com/sh/66obogmvih79e3k/AACnwo0iBfioHrAraguiEdhya/basic_nets/MNIST/width_0.3/log.txt?dl=0)
+
+| Network     | Standard Accuracy | MI_FGSM Accuracy | HBox Provability |
+|-------------|-------------------|------------------|------------------|
+| [FFNN](https://www.dropbox.com/sh/66obogmvih79e3k/AABtAVtC7zvXbF0LWYLDfiN4a/basic_nets/MNIST/width_0.3/FFNN__LinMix_a_IFGSM_w_Lin_00.410020__k_3__b_InSamp_Lin_01502__w_Lin_00.415050___bw_Lin_00.515050___checkpoint_401_with_0.802.pynet?dl=0) | 80.2% | 73.4% | 62.6% |
+| [ConvSmall](https://www.dropbox.com/sh/66obogmvih79e3k/AACdmkCTp3nMJAVSoA_njeHMa/basic_nets/MNIST/width_0.3/ConvSmall__LinMix_a_IFGSM_w_Lin_00.410020__k_3__b_InSamp_Lin_01502__w_Lin_00.415050___bw_Lin_00.515050___checkpoint_401_with_0.969.pynet?dl=0) | 96.9% | 93.6% | 89.1% |
+| [ConvMed](https://www.dropbox.com/sh/66obogmvih79e3k/AACjSQKtrAx2J0nViGa845f4a/basic_nets/MNIST/width_0.3/ConvMed__LinMix_a_IFGSM_w_Lin_00.410020__k_3__b_InSamp_Lin_01502__w_Lin_00.415050___bw_Lin_00.515050___checkpoint_401_with_0.966.pynet?dl=0) | 96.6% | 93.1% | 89.3% |
+| [ConvBig](https://www.dropbox.com/sh/66obogmvih79e3k/AABJ4NcmEQ4UH6ZiU69QAz5la/basic_nets/MNIST/width_0.3/ConvBig__LinMix_a_IFGSM_w_Lin_00.410020__k_3__b_InSamp_Lin_01502__w_Lin_00.415050___bw_Lin_00.515050___checkpoint_401_with_0.970.pynet?dl=0) | 97.0% | 95.2% | 87.8% |
+| [ConvLargeIBP](https://www.dropbox.com/sh/66obogmvih79e3k/AAAfvsO6TyUxLsNqkaLNqSb0a/basic_nets/MNIST/width_0.3/ConvLargeIBP__LinMix_a_IFGSM_w_Lin_00.410020__k_3__b_InSamp_Lin_01502__w_Lin_00.415050___bw_Lin_00.515050___checkpoint_401_with_0.972.pynet?dl=0) | 97.2% | 95.4% | 88.8% |
+| [TruncatedVGG](https://www.dropbox.com/sh/66obogmvih79e3k/AAB-8JyJx1L4bw969D9NlGS_a/basic_nets/MNIST/width_0.3/TruncatedVGG__LinMix_a_IFGSM_w_Lin_00.410020__k_3__b_InSamp_Lin_01502__w_Lin_00.415050___bw_Lin_00.515050___checkpoint_401_with_0.965.pynet?dl=0) | 96.5% | 94.4% | 87.6% |
+
+### CIFAR10
+
+| Network     | Number of Neurons | Number of Parameters | Number ReLU Layers |
+|-------------|----------------------|-------------------|--------------------|
+| [FFNN](https://github.com/eth-sri/diffai/blob/905e1fd854a353a02f5941a3f3a292b19baa207e/models.py#L12) | 500 | 348710 | 5 | 
+| [ConvSmall](https://github.com/eth-sri/diffai/blob/905e1fd854a353a02f5941a3f3a292b19baa207e/models.py#L15) | 4852 | 125318 | 3 | 
+| [ConvMed](https://github.com/eth-sri/diffai/blob/905e1fd854a353a02f5941a3f3a292b19baa207e/models.py#L18) | 6244 | 214918 | 3 | 
+| [ConvBig](https://github.com/eth-sri/diffai/blob/905e1fd854a353a02f5941a3f3a292b19baa207e/models.py#L21) | 62464 | 2466858 | 6 | 
+| [ConvLargeIBP](https://github.com/eth-sri/diffai/blob/905e1fd854a353a02f5941a3f3a292b19baa207e/models.py#L21) | 229576 | 6963554 | 6 | 
+| [TruncatedVGG](https://github.com/eth-sri/diffai/blob/905e1fd854a353a02f5941a3f3a292b19baa207e/models.py#L21) | 197120 | 17043018 | 5 | 
+
+#### 2/255
+
+[Config](https://www.dropbox.com/sh/66obogmvih79e3k/AAB-BBEg_lojmvKIp3kgQpgBa/basic_nets/CIFAR10/width_2_255/config.txt?dl=0)
+[Log](https://www.dropbox.com/sh/66obogmvih79e3k/AAAOh3U-40f7EcwXseIQnYQqa/basic_nets/CIFAR10/width_2_255/log.txt?dl=0)
+
+| Network     | Standard Accuracy | MI_FGSM Accuracy | HBox Provability |
+|-------------|-------------------|------------------|------------------|
+| [FFNN](https://www.dropbox.com/sh/66obogmvih79e3k/AACPg-RTThvNGVcRz48goFvoa/basic_nets/CIFAR10/width_2_255/FFNN__LinMix_a_IFGSM_w_Lin_00.0110020__k_3__b_InSamp_Lin_0115050__w_Lin_00.0115050___bw_Lin_00.515050___checkpoint_301_with_0.451.pynet?dl=0) | 45.1% | 37.0% | 33.1% |
+| [ConvSmall](https://www.dropbox.com/sh/66obogmvih79e3k/AACfzqaT7kwf44Ksh1bVhUb1a/basic_nets/CIFAR10/width_2_255/ConvSmall__LinMix_a_IFGSM_w_Lin_00.0110020__k_3__b_InSamp_Lin_0115050__w_Lin_00.0115050___bw_Lin_00.515050___checkpoint_301_with_0.561.pynet?dl=0) | 56.1% | 46.2% | 42.4% | 
+| [ConvMed](https://www.dropbox.com/sh/66obogmvih79e3k/AACmoCkg52vsZ4cKYRpBZaOqa/basic_nets/CIFAR10/width_2_255/ConvMed__LinMix_a_IFGSM_w_Lin_00.0110020__k_3__b_InSamp_Lin_0115050__w_Lin_00.0115050___bw_Lin_00.515050___checkpoint_301_with_0.569.pynet?dl=0) | 56.9% | 46.6% | 43.2% | 
+| [ConvBig](https://www.dropbox.com/sh/66obogmvih79e3k/AADPqzJeON8IykF5jf7GEQ-ba/basic_nets/CIFAR10/width_2_255/ConvBig__LinMix_a_IFGSM_w_Lin_00.0110020__k_3__b_InSamp_Lin_0115050__w_Lin_00.0115050___bw_Lin_00.515050___checkpoint_301_with_0.619.pynet?dl=0) | 61.9% | 51.4% | 45.0% |
+| [ConvLargeIBP](https://www.dropbox.com/sh/66obogmvih79e3k/AABFYLNWAdY9LJZv_OmdYZ_-a/basic_nets/CIFAR10/width_2_255/ConvLargeIBP__LinMix_a_IFGSM_w_Lin_00.0110020__k_3__b_InSamp_Lin_0115050__w_Lin_00.0115050___bw_Lin_00.515050___checkpoint_301_with_0.611.pynet?dl=0) | 61.1% | 51.4% | 44.5% | 
+| [TruncatedVGG](https://www.dropbox.com/sh/66obogmvih79e3k/AADQIHt4VkQ8g_zpupIpsAg-a/basic_nets/CIFAR10/width_2_255/TruncatedVGG__LinMix_a_IFGSM_w_Lin_00.0110020__k_3__b_InSamp_Lin_0115050__w_Lin_00.0115050___bw_Lin_00.515050___checkpoint_301_with_0.623.pynet?dl=0) | 62.3% | 51.4% | 45.5% | 
+
+
+#### 8/255
+
+[Config](https://www.dropbox.com/sh/66obogmvih79e3k/AAAoc-PLgey_mInNoUCIXYnpa/basic_nets/CIFAR10/width_8_255/config.txt?dl=0)
+[Log](https://www.dropbox.com/sh/66obogmvih79e3k/AACJSCObHnlyfVWrntH_zZ5Va/basic_nets/CIFAR10/width_8_255/log.txt?dl=0)
+
+| Network     | Standard Accuracy | MI_FGSM Accuracy | HBox Provability |
+|-------------|-------------------|------------------|------------------|
+| [FFNN](https://www.dropbox.com/sh/66obogmvih79e3k/AADYCir4behB34PkCO6TpeADa/basic_nets/CIFAR10/width_8_255/FFNN__LinMix_a_IFGSM_w_Lin_00.034510020__k_3__b_InSamp_Lin_0115050__w_Lin_00.034515050___bw_Lin_00.515050___checkpoint_401_with_0.335.pynet?dl=0) | 33.5% | 23.8% | 19.0% | 
+| [ConvSmall](https://www.dropbox.com/sh/66obogmvih79e3k/AAC3Lr5VR32DrNtKPdgqYM5xa/basic_nets/CIFAR10/width_8_255/ConvSmall__LinMix_a_IFGSM_w_Lin_00.034510020__k_3__b_InSamp_Lin_0115050__w_Lin_00.034515050___bw_Lin_00.515050___checkpoint_401_with_0.426.pynet?dl=0) | 42.6% | 30.5% | 24.9% | 
+| [ConvMed](https://www.dropbox.com/sh/66obogmvih79e3k/AAAMUBLDxm_WHgODqWvld-gaa/basic_nets/CIFAR10/width_8_255/ConvMed__LinMix_a_IFGSM_w_Lin_00.034510020__k_3__b_InSamp_Lin_0115050__w_Lin_00.034515050___bw_Lin_00.515050___checkpoint_401_with_0.436.pynet?dl=0) | 43.6% | 30.3% | 24.7% | 
+| [ConvBig](https://www.dropbox.com/sh/66obogmvih79e3k/AAABPE8ICrD6zpumClCvTQ8_a/basic_nets/CIFAR10/width_8_255/ConvBig__LinMix_a_IFGSM_w_Lin_00.034510020__k_3__b_InSamp_Lin_0115050__w_Lin_00.034515050___bw_Lin_00.515050___checkpoint_401_with_0.460.pynet?dl=0) | 46.0% | 34.2% | 25.2% | 
+| [ConvLargeIBP](https://www.dropbox.com/sh/66obogmvih79e3k/AAC97yICem4hQkHL4GOUGeKPa/basic_nets/CIFAR10/width_8_255/ConvLargeIBP__LinMix_a_IFGSM_w_Lin_00.034510020__k_3__b_InSamp_Lin_0115050__w_Lin_00.034515050___bw_Lin_00.515050___checkpoint_401_with_0.462.pynet?dl=0) | 46.2% | 34.7% | 27.2% |
+| [TruncatedVGG](https://www.dropbox.com/sh/66obogmvih79e3k/AADUbsY7X3wZewR3G7ZLYLBia/basic_nets/CIFAR10/width_8_255/TruncatedVGG__LinMix_a_IFGSM_w_Lin_00.034510020__k_3__b_InSamp_Lin_0115050__w_Lin_00.034515050___bw_Lin_00.515050___checkpoint_401_with_0.459.pynet?dl=0) | 45.9% | 34.4% | 27.0% |
+
+
+
 Reproducing Results
 -------------------
 
