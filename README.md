@@ -5,7 +5,7 @@ DiffAI v3 <a href="https://www.sri.inf.ethz.ch/"><img width="100" alt="portfolio
 
 
 
-DiffAI is a system for training neural networks to be provably robust and for proving that they are robust.
+DiffAI is a system for training neural networks to be provably robust and for proving that they are robust.  The system was developed for the [2018 ICML paper](https://files.sri.inf.ethz.ch/website/papers/icml18-diffai.pdf) and the [2019 ArXiV Paper](https://arxiv.org/abs/1903.12519).
 
 Background
 ----------
@@ -297,8 +297,8 @@ To test a saved network as in the paper, use the following command:
 python . -D CIFAR10 -n ResNetLarge_LargeCombo -d Point --width 0.031373 --normalize-layer True --clip-norm False -t 'MI_FGSM(k=20,r=2)' -t HBox --test-size 10000 --test-batch-size 200 --epochs 1 --test NAMEOFSAVEDNET.pynet 
 ```
 
-About
------
+Assorted
+--------
 
 * DiffAI is now on version 3.0.  
 * This repository contains the code used for the experiments in the [2019 ArXiV Paper](https://arxiv.org/abs/1903.12519).
