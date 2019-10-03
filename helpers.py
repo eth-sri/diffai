@@ -42,7 +42,7 @@ class Timer:
             
 def cudify(x):
     if use_cuda:
-        return x.cuda(async=True)
+        return x.cuda(non_blocking=True)
     return x
 
 def pyval(a, **kargs):
