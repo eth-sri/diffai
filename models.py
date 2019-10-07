@@ -31,7 +31,7 @@ def TruncatedVGG(c, **kargs):
     return n.LeNet([ (64, 3, 3, 1), (64,3,3,1), (128,3,3,2), (128,3,3,1)], [512,c], padding=1, ibp_init = True, bias = True, last_lin = True, last_zono = True, **kargs)
 
 def CharLevelAG(c, **kargs):
-    return n.Seq(n.Embedding(150, 64), n.Conv(100, 10, bias=True), n.AvgPool2D(10), n.FFNN([100, 100, c], last_lin=True, last_zono=True, **kargs))
+    return n.Seq(n.Embedding(64, 150), n.Conv(100, 10, bias=True), n.AvgPool2D(10), n.FFNN([100, 100, c], last_lin=True, last_zono=True, **kargs))
 
 ############# New Models
 
