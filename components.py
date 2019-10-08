@@ -202,9 +202,13 @@ class EmbeddingWithSub(InferModule):
             # After which it becomes a batch * (max_length * 2 - 2 + 1) * max_length tensor
             y = self.embed(x.long()).view(-1, 1, self.in_shape[0], self.dim)
             return y
-        else:  # convert to Point, if the input is Point
+        elif isinstance(x, torch.Tensor):  # convert to Point, if the input is Point
             y = self.embed(x.long()).view(-1, 1, self.in_shape[0], self.dim)
             return y
+        elif isinstance(x, ai.ListDomain):
+            return ai.ListDomain([self.forward(ai) for ai in x.al])
+        else:
+            raise NotImplementedError()
 
     def neuronCount(self):
         return 0
@@ -810,14 +814,17 @@ class ReduceToZono(InferModule):
     def forward(self, x, **kargs):
         num_e = h.product(x.size())
         view_num = self.all_possible_sub * h.product(self.in_shape)
-        if num_e >= view_num and num_e % view_num == 0:  # convert to Box (HybirdZonotope)
-            x = x.view(-1, self.all_possible_sub, *self.in_shape)
-            lower = x.min(1)[0]
-            # print(lower.size())
-            upper = x.max(1)[0]
-            return ai.HybridZonotope((lower + upper) / 2, (upper - lower) / 2, None)
-        else:  # if it is in Point() shape
-            return x
+        if isinstance(x, ai.ListDomain):
+            return ai.ListDomain([self.forward(ai) for ai in x.al])
+        else:
+            if num_e >= view_num and num_e % view_num == 0:  # convert to Box (HybirdZonotope)
+                x = x.view(-1, self.all_possible_sub, *self.in_shape)
+                lower = x.min(1)[0]
+                # print(lower.size())
+                upper = x.max(1)[0]
+                return ai.HybridZonotope((lower + upper) / 2, (upper - lower) / 2, None)
+            else:  # if it is in Point() shape
+                return x
 
     def neuronCount(self):
         return 0
