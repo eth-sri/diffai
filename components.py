@@ -175,6 +175,50 @@ class Embedding(InferModule):
         print(h.printNumpy(self.embed.weight), file=f)
 
 
+class EmbeddingWithSub(InferModule):
+    def init(self, in_shape, vocab, dim, **kargs):
+        self.vocab = vocab
+        self.dim = dim
+        self.in_shape = in_shape
+        self.all_possible_sub = in_shape[0] * 2 - 2 + 1
+        self.embed = nn.Embedding(vocab, dim)
+
+        return [1, in_shape[0], dim]
+
+    def forward(self, x, **kargs):
+        if isinstance(x, ai.TaggedDomain):  # convert to Box (HybirdZonotope), if the input is Box
+            x = x.center().vanillaTensorPart()
+            x = x.repeat((1, self.all_possible_sub))
+            for i in x:
+                for j in range(1, self.all_possible_sub):
+                    swap_id = j // 2
+                    if swap_id == 0:
+                        i[swap_id] = x[0][swap_id + 1]
+                    elif swap_id == self.in_shape[0] - 1:
+                        i[swap_id] = x[0][swap_id - 1]
+                    else:
+                        i[swap_id] = x[0][swap_id - 1 + (j % 2) * 2]
+            # every position has 2 options, except for the first and the last one. Also, it can remain the same.
+            # After which it becomes a batch * (max_length * 2 - 2 + 1) * max_length tensor
+            y = self.embed(x.long()).view(-1, 1, self.in_shape[0], self.dim)
+            return y
+        else:  # convert to Point, if the input is Point
+            y = self.embed(x.long()).view(-1, 1, self.in_shape[0], self.dim)
+            return y
+
+    def neuronCount(self):
+        return 0
+
+    def showNet(self, t=""):
+        print(t + "EmbeddingWithSub out=" + str(self.in_shape[0]) + " * " + str(
+            self.dim))
+
+    def printNet(self, f):
+        print("EmbeddingWithSub(" + str(self.in_shape[0]) + ", " + str(self.dim) + ")")
+
+        print(h.printNumpy(self.embed.weight), file=f)
+
+
 class Linear(InferModule):
     def init(self, in_shape, out_shape, **kargs):
         self.in_neurons = h.product(in_shape)
@@ -753,6 +797,36 @@ class ParSum(InferModule):
         print(t + "ParNet2")
         self.net2.showNet("    " + t)
         print(t + "ParSum")
+
+
+class ReduceToZono(InferModule):
+    def init(self, in_shape, max_length, customRelu=None, only_train=False, **kargs):
+        self.all_possible_sub = max_length * 2 - 2 + 1
+        self.customRelu = customRelu
+        self.only_train = only_train
+        self.in_shape = in_shape
+        return in_shape
+
+    def forward(self, x, **kargs):
+        num_e = h.product(x.size())
+        view_num = self.all_possible_sub * h.product(self.in_shape)
+        if num_e >= view_num and num_e % view_num == 0:  # convert to Box (HybirdZonotope)
+            x = x.view(-1, self.all_possible_sub, *self.in_shape)
+            lower = x.min(1)[0]
+            # print(lower.size())
+            upper = x.max(1)[0]
+            return ai.HybridZonotope((lower + upper) / 2, (upper - lower) / 2, None)
+        else:  # if it is in Point() shape
+            return x
+
+    def neuronCount(self):
+        return 0
+
+    # def abstract_forward(self, x, **kargs):
+    #     return x.abstractApplyLeaf('hybrid_to_zono', customRelu=self.customRelu)
+
+    def showNet(self, t=""):
+        print(t + self.__class__.__name__ + " only_train=" + str(self.only_train))
 
 
 class ToZono(Identity):

@@ -33,6 +33,8 @@ def TruncatedVGG(c, **kargs):
 def CharLevelAG(c, **kargs):
     return n.Seq(n.Embedding(150, 64), n.Conv(100, 10, bias=True), n.AvgPool2D(10), n.FFNN([100, 100, c], last_lin=True, last_zono=True, **kargs))
 
+def CharLevelAGSub(c, **kargs):
+    return n.Seq(n.EmbeddingWithSub(64, 150), n.Conv(100, 10, bias=True), n.ReduceToZono(300), n.AvgPool2D(10), n.FFNN([100, 100, c], last_lin=True, last_zono=True, **kargs)) #
 ############# New Models
 
 def ResNetTiny(c, **kargs): # resnetWide also used by mixtrain and scaling provable adversarial defenses
