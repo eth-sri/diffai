@@ -344,7 +344,7 @@ def test(models, epoch, f = None):
                             stat.safe += bs.isSafe(target).sum().item()
                             # stat.max_eps += 0 # TODO: calculate max_eps
 
-                    if m.model.net.neuronCount() < 5000 or stat.domain in SYMETRIC_DOMAINS:
+                    if m.model.net.neuronCount() < 5000 or stat.domain.__class__ in SYMETRIC_DOMAINS:
                         calcData(data, target)
                     else:
                         for d,t in zip(data, target):
