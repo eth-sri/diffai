@@ -199,7 +199,7 @@ parser.add_argument('-n', '--net', choices = h.getMethodNames(models), action = 
 parser.add_argument('-D', '--dataset', choices = [n for (n,k) in inspect.getmembers(datasets, inspect.isclass) if issubclass(k, Dataset)]
                     , default="MNIST", help='picks which dataset to use.')
 
-parser.add_argument('-o', '--out', default="out", help='picks which net to use for training')
+parser.add_argument('-o', '--out', default="out", help='picks the folder to save the outputs')
 parser.add_argument('--dont-write', type=h.str2bool, nargs='?', const=True, default=False, help='dont write anywhere if this flag is on')
 parser.add_argument('--write-first', type=h.str2bool, nargs='?', const=True, default=False, help='write the initial net.  Useful for comparing algorithms, a pain for testing.')
 parser.add_argument('--test-size', type=int, default=2000, help='number of examples to test with')
