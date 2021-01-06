@@ -33,7 +33,7 @@ def catNonNullErrors(op, ref_errs=None): # the way of things is ugly
     
         p1 = op(erS[:sz], erL[:sz])
         erSrem = erS[sz:]
-        erLrem = erS[sz:]
+        erLrem = erL[sz:]
         p2 = op(erSrem, h.zeros(erSrem.shape))
         p3 = op(h.zeros(erLrem.shape), erLrem)
         return torch.cat((p1,p2,p3), dim=0)
