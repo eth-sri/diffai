@@ -4,3 +4,4 @@ future
 forbiddenfruit
 torch==0.4.1
 torchvision==0.2.1
+pillow>=8.1.0 # not directly required, pinned by Snyk to avoid a vulnerability
